@@ -440,13 +440,15 @@ class _CommandExecuteHandler(core.CommandEventHandler):
             inputs = args.command.commandInputs
             params = _collect_params(inputs)
 
-            comp = design.rootComponent
-            plane = comp.xYConstructionPlane
-
             # Optional user-selected target surface (face or plane). When set,
             # the builder places every sketch on it and patterns about its
             # axis; when empty the spline is built on the XY plane.
             target = _selected_target(inputs)
+
+            # New Body mode builds into a fresh named sub-component; Cut into
+            # Existing mode builds into the root component so the subtractive
+            # cut applies to the body already there.
+            comp, plane = _resolve_build_component(design, params, target)
 
             # Building all features inside the command's execute handler is
             # automatically grouped by Fusion into a single undo transaction.
@@ -508,6 +510,37 @@ def _linear_mm(inputs: core.CommandInputs, input_id: str) -> float:
     user's display units.
     """
     return inputs.itemById(input_id).value * 10.0
+
+
+def _make_spline_name(params: dict) -> str:
+    """Human-readable component name for a freshly built spline body."""
+    kind = params.get("spline_type", "")
+    teeth = params.get("teeth", 0)
+    gender = "Hub" if params.get("gender") == "internal" else "Shaft"
+    return f"Spline_{kind}_{teeth}T_{gender}"
+
+
+def _resolve_build_component(design, params: dict, target):
+    """Pick the component (and sketch plane) the spline is built into.
+
+    New Body mode creates a fresh named sub-component so the spline is an
+    isolated, reusable node and can never be welded into a pre-existing body
+    by the join step. Cut into Existing mode must build inside the component
+    that owns the target face (the root component when no target is given),
+    otherwise the subtractive cut would have nothing to remove from.
+
+    Returns ``(component, plane)``.
+    """
+    if params.get("build_mode") != "cut":
+        occurrence = design.rootComponent.occurrences.addNewComponent(
+            core.Matrix3D.create()
+        )
+        comp = occurrence.component
+        comp.name = _make_spline_name(params)
+        return comp, comp.xYConstructionPlane
+
+    comp = design.rootComponent
+    return comp, comp.xYConstructionPlane
 
 
 # ---------------------------------------------------------------------------

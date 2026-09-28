@@ -214,6 +214,43 @@ class TestPresetApplyNew(unittest.TestCase):
         self.assertEqual(addin._root_type_value("Flat root"), "flat")
 
 
+class TestBuildComponentResolution(unittest.TestCase):
+    """New Body mode builds into a fresh named sub-component; Cut mode into root."""
+
+    def _design(self):
+        core.Application.reset()
+        return core.Application.get().ActiveProduct.designs[0]
+
+    def test_new_body_creates_named_subcomponent(self):
+        design = self._design()
+        root = design.rootComponent
+        params = {"build_mode": "new", "spline_type": "metric",
+                  "teeth": 14, "gender": "external"}
+        comp, plane = addin._resolve_build_component(design, params, None)
+        self.assertIsNot(comp, root)
+        self.assertEqual(comp.name, "Spline_metric_14T_Shaft")
+        # The new component is isolated: it starts with zero bodies.
+        self.assertEqual(comp.bRepBodies.count, 0)
+        self.assertEqual(root.bRepBodies.count, 0)
+        # Its own XY plane is used, not the root's.
+        self.assertIs(plane, comp.xYConstructionPlane)
+
+    def test_cut_mode_uses_root_component(self):
+        design = self._design()
+        root = design.rootComponent
+        params = {"build_mode": "cut", "spline_type": "metric",
+                  "teeth": 14, "gender": "internal"}
+        comp, plane = addin._resolve_build_component(design, params, None)
+        self.assertIs(comp, root)
+
+    def test_internal_gender_names_hub(self):
+        self.assertEqual(
+            addin._make_spline_name({"spline_type": "parallel", "teeth": 6,
+                                     "gender": "internal"}),
+            "Spline_parallel_6T_Hub",
+        )
+
+
 class TestLifecycle(unittest.TestCase):
     def test_stop_is_safe_without_start(self):
         # stop() must not raise even if the command was never created.

@@ -21,7 +21,9 @@ profile is sketched, extruded, and circular-patterned across the tooth count.
   - **SAE J499 / ISO 500 / DIN 9611** parallel-side (straight-sided) tractor PTO splines.
 - **External shafts and internal hubs** (additive boss or subtractive bore).
 - **Build modes**
-  - **New Body** — a self-contained spline solid.
+  - **New Body** — a self-contained spline solid, created in its own named
+    sub-component (e.g. `Spline_metric_14T_Shaft`) so it stays isolated and
+    reusable, like the Sprocket generator.
   - **Cut into Existing** — subtractively bores / grooves the spline into a
     premade part you select, with no separate blank body.
 - **Target-face placement** — pick a planar end face or a cylindrical bore/shaft

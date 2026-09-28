@@ -302,6 +302,12 @@ class Point2D:
         self.x, self.y = float(x), float(y)
 
 
+class Matrix3D:
+    @staticmethod
+    def create():
+        return Matrix3D()
+
+
 class ObjectCollection:
     def __init__(self):
         self._items: List[object] = []
@@ -723,12 +729,15 @@ class _ConstructionPoints:
 class _Component:
     def __init__(self, design):
         self.parentDesign = design
+        self.name = "Component"
         self.sketches = _Sketches(self)
         self.features = _Features(self)
         self.sketches_list: List[_Sketch] = []
         self.features_log: List[tuple] = []
         self._bodies = 0
         self.zConstructionAxis = _Axis("Z")
+        self.xYConstructionPlane = _Plane("XY")
+        self.occurrences = _Occurrences(self)
         self.constructionAxes = _ConstructionAxes(self)
         self.constructionPlanes = _ConstructionPlanes(self)
         self.constructionPoints = _ConstructionPoints(self)
@@ -743,6 +752,20 @@ class _Component:
     @property
     def bRepBodies(self):
         return _Bodies(self)
+
+
+class _Occurrences:
+    """Component occurrences; addNewComponent creates an isolated sub-component
+    (its own sketches / features / bodies) attached to the same design."""
+
+    def __init__(self, component):
+        self._component = component
+        self.created: List[object] = []
+
+    def addNewComponent(self, matrix):
+        new_comp = _Component(self._component.parentDesign)
+        self.created.append(new_comp)
+        return types.SimpleNamespace(component=new_comp)
 
 
 class _Bodies:
@@ -770,6 +793,10 @@ class _Design:
         self.origin = _Origin()
         self._root = _Component(self)
         self.activeComponent = self._root
+
+    @property
+    def rootComponent(self):
+        return self._root
 
     def components(self):
         return [self._root]
