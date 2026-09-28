@@ -33,6 +33,7 @@ def _resolve_profile_points(params: Dict[str, Any]):
     spline_type = params["spline_type"]
     teeth = int(params["teeth"])
     internal = params.get("gender", "external") == "internal"
+    slop_mm = float(params.get("slop_mm", 0.0))
 
     if spline_type in ("metric", "imperial"):
         if spline_type == "metric":
@@ -46,16 +47,16 @@ def _resolve_profile_points(params: Dict[str, Any]):
         if internal:
             edges = involute_math.internal_space_edges(
                 module_mm, teeth, pa, x, root_type=root_type,
-                center_distance_offset_mm=cdo,
+                center_distance_offset_mm=cdo, slop_mm=slop_mm,
             )
         else:
             edges = involute_math.external_tooth_edges(
                 module_mm, teeth, pa, x, root_type=root_type,
-                center_distance_offset_mm=cdo,
+                center_distance_offset_mm=cdo, slop_mm=slop_mm,
             )
         g = involute_math.compute_radii(
             module_mm, teeth, pa, x, internal,
-            root_type=root_type, center_distance_offset_mm=cdo,
+            root_type=root_type, center_distance_offset_mm=cdo, slop_mm=slop_mm,
         )
         radii = [g["root_radius"], g["base_radius"], g["pitch_radius"], g["major_radius"]]
         key = {"root": g["root_radius"], "major": g["major_radius"], "wall": module_mm}
@@ -69,10 +70,10 @@ def _resolve_profile_points(params: Dict[str, Any]):
         minor = float(params["minor_diameter_mm"])
         width = float(params.get("tooth_width_mm", 0.0))
         if internal:
-            pts = parallel_math.internal_space_profile(major, minor, teeth, width)
+            pts = parallel_math.internal_space_profile(major, minor, teeth, width, slop_mm=slop_mm)
         else:
-            pts = parallel_math.external_tooth_profile(major, minor, teeth, width)
-        g = parallel_math.compute_radii(major, minor, teeth, width)
+            pts = parallel_math.external_tooth_profile(major, minor, teeth, width, slop_mm=slop_mm)
+        g = parallel_math.compute_radii(major, minor, teeth, width, internal=internal, slop_mm=slop_mm)
         radii = [g["minor_radius"], g["pitch_radius"], g["major_radius"]]
         key = {
             "root": g["minor_radius"],

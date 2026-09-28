@@ -86,6 +86,7 @@ def compute_radii(
     root_fillet_factor: float = None,
     root_type: str = "flat",
     center_distance_offset_mm: float = 0.0,
+    slop_mm: float = 0.0,
 ) -> Dict[str, float]:
     """Return the characteristic radii (mm) of one involute spline.
 
@@ -112,6 +113,13 @@ def compute_radii(
         Optional radial offset applied to the pitch radius (a metric
         centre-distance adjustment).  Shifts both the major and root radii
         outward by this amount without changing the tooth thickness.
+    slop_mm:
+        Radial fit allowance (interference / clearance).  A positive value
+        enlarges an internal hub by ``slop_mm`` and shrinks an external shaft
+        by ``slop_mm``, opening a small clearance so a precisely-modelled
+        mating pair is not an exact (too-tight) line-to-line fit.  Applied as a
+        radial shift of the pitch radius, so the involute tooth shape is
+        preserved and only its radial placement moves.
     """
     if teeth < 2:
         raise ValueError("A spline needs at least 2 teeth.")
@@ -123,9 +131,18 @@ def compute_radii(
         root_fillet_factor = r_f if root_fillet_factor is None else root_fillet_factor
 
     pitch_d = module_mm * teeth
-    r_pitch = pitch_d / 2.0 + center_distance_offset_mm
+    # Fit allowance: grow an internal hub, shrink an external shaft (radially).
+    slop_shift = slop_mm if internal else -slop_mm
     alpha = _rad(pressure_angle_deg)
-    r_base = (pitch_d / 2.0) * math.cos(alpha)
+    # The involute flank (the mating surface) carries the full radial slop, so
+    # the base circle that generates it is shifted by the whole amount --
+    # otherwise only the tip/root lands move and the flank arcs stay anchored to
+    # the unshifted base circle.
+    r_base = (pitch_d / 2.0) * math.cos(alpha) + slop_shift
+    # The tip/root lands only move by HALF the slop.  The flanks, not the lands,
+    # are the fit surfaces, so the tooth closes up at top and bottom while the
+    # side clearance stays at the full slop.
+    r_pitch = pitch_d / 2.0 + center_distance_offset_mm + slop_shift / 2.0
 
     # Addendum / dedendum (external convention).
     addendum = module_mm * (addendum_factor + profile_shift)
@@ -323,6 +340,7 @@ def external_tooth_edges(
     profile_shift: float = 0.0,
     root_type: str = "flat",
     center_distance_offset_mm: float = 0.0,
+    slop_mm: float = 0.0,
 ) -> List[tuple]:
     """Closed edge loop for ONE external tooth, centred on +X.
 
@@ -334,6 +352,7 @@ def external_tooth_edges(
     g = compute_radii(
         module_mm, teeth, pressure_angle_deg, profile_shift, False,
         root_type=root_type, center_distance_offset_mm=center_distance_offset_mm,
+        slop_mm=slop_mm,
     )
     r_b, r_a, r_f, r_p = (
         g["base_radius"], g["major_radius"], g["root_radius"], g["pitch_radius"],
@@ -364,6 +383,7 @@ def internal_space_edges(
     profile_shift: float = 0.0,
     root_type: str = "flat",
     center_distance_offset_mm: float = 0.0,
+    slop_mm: float = 0.0,
 ) -> List[tuple]:
     """Closed edge loop for ONE internal spline space (the cut region).
 
@@ -374,6 +394,7 @@ def internal_space_edges(
     g = compute_radii(
         module_mm, teeth, pressure_angle_deg, profile_shift, True,
         root_type=root_type, center_distance_offset_mm=center_distance_offset_mm,
+        slop_mm=slop_mm,
     )
     r_b, r_major, r_root, r_p = (
         g["base_radius"], g["major_radius"], g["root_radius"], g["pitch_radius"],

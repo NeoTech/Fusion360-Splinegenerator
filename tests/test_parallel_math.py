@@ -22,6 +22,18 @@ class TestRadii(unittest.TestCase):
         self.assertAlmostEqual(g["major_radius"], 34.9254 / 2.0, places=6)
         self.assertAlmostEqual(g["minor_radius"], 29.4132 / 2.0, places=6)
 
+    def test_slop_grows_internal_shrinks_external(self):
+        # Positive slop enlarges a hub and shrinks a shaft (both radii), giving
+        # clearance so a mating pair is not a line-to-line fit.
+        ext0 = pm.compute_radii(34.9254, 29.4132, 6, internal=False, slop_mm=0.0)
+        ext = pm.compute_radii(34.9254, 29.4132, 6, internal=False, slop_mm=0.2)
+        int0 = pm.compute_radii(34.9254, 29.4132, 6, internal=True, slop_mm=0.0)
+        int_ = pm.compute_radii(34.9254, 29.4132, 6, internal=True, slop_mm=0.2)
+        self.assertAlmostEqual(ext["major_radius"], ext0["major_radius"] - 0.2, places=6)
+        self.assertAlmostEqual(ext["minor_radius"], ext0["minor_radius"] - 0.2, places=6)
+        self.assertAlmostEqual(int_["major_radius"], int0["major_radius"] + 0.2, places=6)
+        self.assertAlmostEqual(int_["minor_radius"], int0["minor_radius"] + 0.2, places=6)
+
     def test_invalid_diameters(self):
         with self.assertRaises(ValueError):
             pm.compute_radii(20.0, 30.0, 6)

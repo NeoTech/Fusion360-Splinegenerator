@@ -58,6 +58,7 @@ def _fresh_inputs():
         (addin.ID_TOOTH_WIDTH, 8.73),
         (addin.ID_LENGTH, 40.0),
         (addin.ID_CHAMFER, 1.0),
+        (addin.ID_SLOP, 0.0),
     ]:
         inputs.addValueInput(pid, pid, "mm", core.ValueInput.createByString(f"{mm} mm"))
     return inputs

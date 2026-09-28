@@ -24,12 +24,22 @@ def compute_radii(
     minor_diameter_mm: float,
     teeth: int,
     tooth_width_mm: float = 0.0,
+    internal: bool = False,
+    slop_mm: float = 0.0,
 ) -> Dict[str, float]:
-    """Characteristic radii/diameters for a parallel-side spline."""
+    """Characteristic radii/diameters for a parallel-side spline.
+
+    ``slop_mm`` is a radial fit allowance: a positive value enlarges an internal
+    hub and shrinks an external shaft (both radii shift by ``+slop`` for a hub,
+    ``-slop`` for a shaft) so a precisely-modelled mating pair is not an exact
+    line-to-line fit.  The tooth/space angles are held fixed, so the profile
+    scales purely radially.
+    """
     if teeth < 2:
         raise ValueError("A spline needs at least 2 teeth.")
-    r_major = major_diameter_mm / 2.0
-    r_minor = minor_diameter_mm / 2.0
+    shift = slop_mm if internal else -slop_mm
+    r_major = major_diameter_mm / 2.0 + shift
+    r_minor = minor_diameter_mm / 2.0 + shift
     if r_major <= r_minor:
         raise ValueError("Major diameter must exceed minor diameter.")
     return {
@@ -61,12 +71,16 @@ def external_tooth_profile(
     minor_diameter_mm: float,
     teeth: int,
     tooth_width_mm: float = 0.0,
+    slop_mm: float = 0.0,
 ) -> List[Point]:
     """Closed trapezoid for ONE external parallel-side tooth, centred on +X.
 
     Order: root-left -> tip-left -> tip-right -> root-right -> close.
     """
-    g = compute_radii(major_diameter_mm, minor_diameter_mm, teeth, tooth_width_mm)
+    g = compute_radii(
+        major_diameter_mm, minor_diameter_mm, teeth, tooth_width_mm,
+        internal=False, slop_mm=slop_mm,
+    )
     r_a, r_f = g["major_radius"], g["minor_radius"]
     ha = _half_tooth_angle(r_a, teeth, tooth_width_mm)
     # Keep the root narrower than the tip only if a chordal width was given;
@@ -89,6 +103,7 @@ def internal_space_profile(
     minor_diameter_mm: float,
     teeth: int,
     tooth_width_mm: float = 0.0,
+    slop_mm: float = 0.0,
 ) -> List[Point]:
     """Closed polygon for ONE internal spline space (the cut region).
 
@@ -96,7 +111,10 @@ def internal_space_profile(
     external tooth: a trapezoid whose wide end is at the hub crest (minor
     radius) and narrow end at the hub root (major radius).
     """
-    g = compute_radii(major_diameter_mm, minor_diameter_mm, teeth, tooth_width_mm)
+    g = compute_radii(
+        major_diameter_mm, minor_diameter_mm, teeth, tooth_width_mm,
+        internal=True, slop_mm=slop_mm,
+    )
     r_a, r_f = g["major_radius"], g["minor_radius"]
     # Space half-angle at the small (crest) radius.
     ha_space = math.pi / (2.0 * teeth)

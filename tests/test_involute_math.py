@@ -39,6 +39,46 @@ class TestRadii(unittest.TestCase):
         shifted = im.compute_radii(2.0, 20, 30.0, profile_shift=0.5)
         self.assertGreater(shifted["major_radius"], base["major_radius"])
 
+    def test_slop_grows_internal_shrinks_external(self):
+        # Positive slop enlarges a hub and shrinks a shaft (radially), giving
+        # clearance so a mating pair is not a line-to-line fit.
+        ext0 = im.compute_radii(2.0, 20, 30.0, internal=False, slop_mm=0.0)
+        ext = im.compute_radii(2.0, 20, 30.0, internal=False, slop_mm=0.2)
+        int0 = im.compute_radii(2.0, 20, 30.0, internal=True, slop_mm=0.0)
+        int_ = im.compute_radii(2.0, 20, 30.0, internal=True, slop_mm=0.2)
+        # The tip/root lands move by HALF the slop (they are not the fit
+        # surfaces), so the tooth closes up at top and bottom.
+        self.assertAlmostEqual(ext["major_radius"], ext0["major_radius"] - 0.1, places=6)
+        self.assertAlmostEqual(ext["root_radius"], ext0["root_radius"] - 0.1, places=6)
+        self.assertAlmostEqual(int_["major_radius"], int0["major_radius"] + 0.1, places=6)
+        self.assertAlmostEqual(int_["root_radius"], int0["root_radius"] + 0.1, places=6)
+        # The base circle (which anchors the involute flank arcs) carries the
+        # FULL slop -- the flanks are the mating surfaces.
+        self.assertAlmostEqual(ext["base_radius"], ext0["base_radius"] - 0.2, places=6)
+        self.assertAlmostEqual(int_["base_radius"], int0["base_radius"] + 0.2, places=6)
+
+    def test_slop_moves_flank_arcs_not_just_lands(self):
+        # A flank point (an arc vertex, not a land) must move radially with slop.
+        e0 = im.external_tooth_edges(2.0, 20, 30.0, slop_mm=0.0)
+        e1 = im.external_tooth_edges(2.0, 20, 30.0, slop_mm=0.5)
+        # First edge is the flank arc; its start point sits on the root circle,
+        # which moves by half the slop (the lands close up to slop/2).
+        p0, p1 = e0[0][1], e1[0][1]
+        r0 = math.hypot(*p0)
+        r1 = math.hypot(*p1)
+        self.assertAlmostEqual(r1, r0 - 0.25, places=6)
+        # And the flank's angular position changes (the arc itself moved), not
+        # just its radius -- proving the involute was regenerated from the
+        # shifted base circle.
+        a0 = math.atan2(p0[1], p0[0])
+        a1 = math.atan2(p1[1], p1[0])
+        self.assertNotAlmostEqual(a0, a1, places=6)
+
+    def test_slop_zero_is_default(self):
+        a = im.compute_radii(2.0, 20, 30.0, internal=True)
+        b = im.compute_radii(2.0, 20, 30.0, internal=True, slop_mm=0.0)
+        self.assertAlmostEqual(a["major_radius"], b["major_radius"], places=9)
+
     def test_min_teeth_guard(self):
         with self.assertRaises(ValueError):
             im.compute_radii(2.0, 1, 30.0)

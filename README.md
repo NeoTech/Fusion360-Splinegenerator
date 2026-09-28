@@ -72,6 +72,7 @@ Open the dialog and fill in the parameters:
 | **Major / Minor Diameter, Tooth Width** | Value inputs | Parallel-side (PTO) only. |
 | **Length** | Value input | Extrusion length. |
 | **Lead-in Chamfer** | Value input | Optional chamfer on the end face(s). |
+| **Slop / Fit Allowance** | Value input | Radial clearance (default 0). Positive enlarges an internal hub and shrinks an external shaft. The involute flanks (the mating surfaces) carry the full slop; the tip/root lands move by half, so the tooth closes up top and bottom. |
 | **Target Face (optional)** | Selection | A face or plane to place the spline on. Leave empty for the XY plane. |
 
 Irrelevant fields are hidden automatically for the selected standard, so the

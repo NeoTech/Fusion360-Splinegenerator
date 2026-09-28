@@ -89,6 +89,7 @@ ID_MINOR = "minor_diameter"
 ID_TOOTH_WIDTH = "tooth_width"
 ID_LENGTH = "length"
 ID_CHAMFER = "chamfer"
+ID_SLOP = "slop"
 ID_TARGET = "target_face"
 ID_BUILD_MODE = "build_mode"
 
@@ -213,6 +214,11 @@ class _CommandCreatedHandler(core.CommandCreatedEventHandler):
             _add_linear(inputs, ID_TOOTH_WIDTH, "Tooth Width", 8.73)
             _add_linear(inputs, ID_LENGTH, "Length", 40.0)
             _add_linear(inputs, ID_CHAMFER, "Lead-in Chamfer", 1.0)
+
+            # Radial fit allowance (interference / clearance).  Positive grows
+            # an internal hub and shrinks an external shaft so a mating pair is
+            # not an exact line-to-line fit.  Applies to every standard.
+            _add_linear(inputs, ID_SLOP, "Slop / Fit Allowance", 0.0)
 
             # Optional target surface: pick a face (planar end face or a bore /
             # shaft cylinder) or a construction plane to place the spline on.
@@ -465,6 +471,7 @@ def _collect_params(inputs: core.CommandInputs) -> dict:
         "teeth": int(inputs.itemById(ID_TEETH).value),
         "length_mm": _linear_mm(inputs, ID_LENGTH),
         "chamfer_mm": _linear_mm(inputs, ID_CHAMFER),
+        "slop_mm": _linear_mm(inputs, ID_SLOP),
     }
 
     if kind in ("metric", "imperial"):
