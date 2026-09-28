@@ -1,0 +1,28 @@
+{
+    "autodeskProduct": "Fusion",
+    "type": "addin",
+    "name": {
+        "resource": "Fusion 360 Spline Generator",
+        "origin": "Fusion 360 Spline Generator"
+    },
+    "author": {
+        "name": {
+            "resource": "Fusion360-Splinegenerator",
+            "origin": "Fusion360-Splinegenerator"
+        },
+        "email": "",
+        "url": "https://github.com/Fusion360-Splinegenerator"
+    },
+    "description": {
+        "resource": "Parameter-driven involute and parallel-side spline generator (DIN 5480, ANSI B92.1, SAE J499).",
+        "origin": "Parameter-driven involute and parallel-side spline generator."
+    },
+    "manifestVersion": 2,
+    "mainScript": "Fusion360-Splinegenerator.py",
+    "moduleScript": "",
+    "apiVersion": ["2.0", "3.0"],
+    "version": "1.0",
+    "supportedOS": "windows|mac",
+    "editEnabled": true,
+    "debugEnabled": true
+}
