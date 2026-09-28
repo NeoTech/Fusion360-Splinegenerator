@@ -32,18 +32,22 @@ if _addin_dir not in sys.path:
     sys.path.insert(0, _addin_dir)
 
 try:
-    from cad import builder  # noqa: E402
+    from cad import builder, sketch_builder, feature_builder  # noqa: E402
     from core import presets, involute_math, parallel_math  # noqa: E402
 
     # Fusion caches submodules in sys.modules across add-in reloads, so a
     # plain "from core import presets" can return a STALE module after we edit
     # presets.py (the top-level .py re-runs but the submodule does not). Force
-    # the pure-math submodules to re-read from disk so new symbols are visible
-    # without restarting Fusion. Reload leaves before builder, which imports
-    # them. Safe: these modules are side-effect free.
+    # every submodule to re-read from disk so new symbols are visible without
+    # restarting Fusion. Order matters: reload the leaves first, then builder,
+    # which re-imports them. (Missing a leaf is exactly how "module
+    # 'cad.sketch_builder' has no attribute 'build_tooth_edges'" happens after
+    # editing that file.) Safe: these modules are side-effect free.
     importlib.reload(involute_math)
     importlib.reload(parallel_math)
     importlib.reload(presets)
+    importlib.reload(sketch_builder)
+    importlib.reload(feature_builder)
     importlib.reload(builder)
 except Exception:  # pragma: no cover - import-time diagnostics
     _log = os.path.join(_addin_dir, "splinegenerator_import_error.log")
@@ -399,8 +403,6 @@ class _CommandExecuteHandler(core.CommandEventHandler):
             # Building all features inside the command's execute handler is
             # automatically grouped by Fusion into a single undo transaction.
             builder.build_spline(comp, plane, params)
-
-            _ui.messageBox("Spline generated successfully.")
         except Exception:
             if _ui:
                 _ui.messageBox("Build error:\n" + traceback.format_exc())
