@@ -184,6 +184,37 @@ class _DropDown(_Input):
         self.listItems = _ListItems()
 
 
+class _Selection:
+    def __init__(self, entity, point=None):
+        self.entity = entity
+        self.point = point
+
+
+class _SelectionInput(_Input):
+    """Stand-in for adsk.core.SelectionCommandInput."""
+
+    def __init__(self, input_id):
+        super().__init__(input_id)
+        self._selections: List[_Selection] = []
+
+    def setSelectionLimits(self, min_count, max_count):
+        self._min, self._max = min_count, max_count
+
+    def addSelection(self, entity, point=None):
+        self._selections.append(_Selection(entity, point))
+        return len(self._selections) - 1
+
+    def clearSelection(self):
+        self._selections.clear()
+
+    @property
+    def selectionCount(self):
+        return len(self._selections)
+
+    def selection(self, i):
+        return self._selections[i]
+
+
 class CommandInputs:
     """Minimal command-inputs container for testing the add-in logic."""
 
@@ -193,6 +224,12 @@ class CommandInputs:
 
     def addDropDownCommandInput(self, input_id, *a, **k):
         inp = _DropDown(input_id)
+        self._inputs[input_id] = inp
+        self._order.append(inp)
+        return inp
+
+    def addSelectionInput(self, input_id, *a, **k):
+        inp = _SelectionInput(input_id)
         self._inputs[input_id] = inp
         self._order.append(inp)
         return inp
@@ -339,11 +376,12 @@ class _ArcCollection:
 
 
 class _Sketch:
-    def __init__(self, parent_component):
+    def __init__(self, parent_component, plane=None):
         self.parentComponent = parent_component
         self.sketchCurves = _SketchCurves()
         self._name = "Sketch"
         self.profiles = _Profiles(self)
+        self.plane = plane
 
     @property
     def name(self):
@@ -378,7 +416,7 @@ class _Sketches:
         self._component = component
 
     def add(self, plane):
-        sk = _Sketch(self._component)
+        sk = _Sketch(self._component, plane)
         self._component.sketches_list.append(sk)
         return sk
 
@@ -523,9 +561,31 @@ class _BoundingBox:
         self.maxPoint = types.SimpleNamespace(z=maxz)
 
 
+class _PlanarGeometry:
+    """Stand-in for adsk.core.PlanarSurface: exposes .normal only."""
+
+    def __init__(self, normal=(0.0, 0.0, 1.0)):
+        self.normal = Point3D(*normal)
+
+
+class _CylindricalGeometry:
+    """Stand-in for adsk.core.CylindricalSurface: exposes .axis, no .normal."""
+
+    def __init__(self, axis=(0.0, 0.0, 1.0)):
+        self.axis = Point3D(*axis)
+        self.radius = 1.0
+
+
+class _Edge:
+    def __init__(self, kind="line"):
+        self.kind = kind
+
+
 class _Face:
-    def __init__(self, minz, maxz):
+    def __init__(self, minz, maxz, geometry=None, edges=None):
         self.boundingBox = _BoundingBox(minz, maxz)
+        self.geometry = geometry
+        self.edges = edges if edges is not None else []
 
 
 class _Faces:
@@ -541,6 +601,95 @@ class _Body:
         self.faces = _Faces(faces)
 
 
+# ---------------------------------------------------------------------------
+# Construction geometry (axes / planes / points) for target-face placement.
+# ---------------------------------------------------------------------------
+class _ConstructionAxisInput:
+    def __init__(self, owner):
+        self._owner = owner
+        self.method = None
+        self.entity = None
+
+    def setByCircularFace(self, face):
+        self.method, self.entity = "circular", face
+        return True
+
+    def setByNormalToFaceAtPoint(self, face, point):
+        self.method, self.entity = "normal_face_point", (face, point)
+        return True
+
+
+class _ConstructionAxes:
+    def __init__(self, component):
+        self._component = component
+        self.created: List[_Axis] = []
+
+    def createInput(self):
+        return _ConstructionAxisInput(self)
+
+    def add(self, inp):
+        ax = _Axis("CAX")
+        self.created.append(ax)
+        self._component.construction_axes_log.append((inp.method, inp.entity, ax))
+        return ax
+
+
+class _ConstructionPlaneInput:
+    def __init__(self, owner):
+        self._owner = owner
+        self.method = None
+        self.entity = None
+
+    def setByPerpendicularToPlane(self, face, distance, ref, use_u):
+        self.method, self.entity = "perp", face
+        return True
+
+    def setByOffset(self, planar_entity, offset):
+        self.method, self.entity = "offset", planar_entity
+        return True
+
+
+class _ConstructionPlanes:
+    def __init__(self, component):
+        self._component = component
+        self.created: List[_Plane] = []
+
+    def createInput(self):
+        return _ConstructionPlaneInput(self)
+
+    def add(self, inp):
+        pl = _Plane("CPL")
+        self.created.append(pl)
+        self._component.construction_planes_log.append((inp.method, inp.entity, pl))
+        return pl
+
+
+class _ConstructionPointInput:
+    def __init__(self, owner):
+        self._owner = owner
+        self.method = None
+        self.entity = None
+
+    def setByCenter(self, edge):
+        self.method, self.entity = "center", edge
+        return True
+
+
+class _ConstructionPoints:
+    def __init__(self, component):
+        self._component = component
+        self.created: List[object] = []
+
+    def createInput(self):
+        return _ConstructionPointInput(self)
+
+    def add(self, inp):
+        pt = types.SimpleNamespace(entity=inp.entity)
+        self.created.append(pt)
+        self._component.construction_points_log.append((inp.method, inp.entity, pt))
+        return pt
+
+
 class _Component:
     def __init__(self, design):
         self.parentDesign = design
@@ -550,6 +699,12 @@ class _Component:
         self.features_log: List[tuple] = []
         self._bodies = 0
         self.zConstructionAxis = _Axis("Z")
+        self.constructionAxes = _ConstructionAxes(self)
+        self.constructionPlanes = _ConstructionPlanes(self)
+        self.constructionPoints = _ConstructionPoints(self)
+        self.construction_axes_log: List[tuple] = []
+        self.construction_planes_log: List[tuple] = []
+        self.construction_points_log: List[tuple] = []
 
     @property
     def bodies(self):

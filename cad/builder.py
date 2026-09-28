@@ -88,6 +88,7 @@ def build_spline(
     component: fusion.Component,
     plane: Any,
     params: Dict[str, Any],
+    target: Any = None,
 ) -> fusion.Feature:
     """Generate the full spline (one tooth + circular pattern) and return the
     pattern feature.
@@ -100,6 +101,12 @@ def build_spline(
         major_diameter_mm / minor_diameter_mm / tooth_width_mm  (parallel)
         length_mm   : extrusion length
         chamfer_mm  : lead-in chamfer size (0 disables)
+
+    ``target`` (optional): a face or construction plane the user selected to
+    place the spline on (e.g. the end face of a shaft, or a bore wall).  When
+    given, all sketches are built on that surface and the circular pattern runs
+    about its axis (cylinder axis when possible, else the face normal).  When
+    ``None`` the spline is built on ``plane`` about the origin Z axis.
     """
     profile, radii_mm, key = _resolve_profile_points(params)
     internal = params.get("gender", "external") == "internal"
@@ -107,26 +114,33 @@ def build_spline(
     length_mm = float(params["length_mm"])
     chamfer_mm = float(params.get("chamfer_mm", 0.0))
 
+    # 0. Resolve the optional target surface into the sketch geometry and the
+    #    circular-pattern axis.  Falls back to (plane, origin Z) when no target
+    #    is supplied or the selection cannot be interpreted.
+    sketch_geom, axis = feature_builder.resolve_target(component, plane, target)
+
     # 1. Base blank: a solid cylinder at the root radius (external shaft) or
     #    major radius (internal hub).  The teeth are then joined to / cut from
     #    this body so the result is a single connected solid.
     base_radius = key["major"] if internal else key["root"]
-    base_profile = sketch_builder.add_circle_profile(component, plane, base_radius)
+    base_profile = sketch_builder.add_circle_profile(component, sketch_geom, base_radius)
     feature_builder.extrude_profile(base_profile, length_mm, cut=False)
 
-    # 1b. Internal: bore the centre out to just below the tooth-crest radius
-    #     first so the blank becomes a tube; the spaces are then cut into the
-    #     tube wall.  Boring slightly below the crest (rather than exactly at
-    #     it) keeps a thin solid band behind the teeth and avoids the
-    #     tangent-face fragmentation that a crest-radius bore causes.
+    # 1b. Internal: bore the centre out to the tooth-crest radius (key["root"],
+    #     the small radius of a hub) so the blank becomes a tube whose inner
+    #     wall is exactly the crest circle.  The space cuts then run from this
+    #     crest radius outward to the groove bottom (key["major"]), opening
+    #     cleanly into the bore.  Boring to anything less than the crest leaves
+    #     a solid band behind the teeth and the spaces become closed pockets
+    #     that never connect to the bore.
     if internal:
         bore_profile = sketch_builder.add_circle_profile(
-            component, plane, key["root"] * 0.9
+            component, sketch_geom, key["root"]
         )
         feature_builder.extrude_profile(bore_profile, length_mm, cut=True)
 
     # 2-4. Sketch: reference circles + a single closed tooth/space loop.
-    sketch = sketch_builder.find_or_create_sketch_on(component, plane)
+    sketch = sketch_builder.find_or_create_sketch_on(component, sketch_geom)
     sketch_builder.build_reference_circles(sketch, radii_mm)
     kind, data = profile
     if kind == "edges":
@@ -139,10 +153,8 @@ def build_spline(
     # 5. Extrude (external tooth boss) or cut (internal space) the single tooth.
     extrude = feature_builder.extrude_profile(profile, length_mm, cut=internal)
 
-    # 6. Circular pattern across z teeth around the Z axis.
-    pattern = feature_builder.circular_pattern(
-        extrude, teeth, feature_builder.z_axis(component)
-    )
+    # 6. Circular pattern across z teeth around the resolved axis.
+    pattern = feature_builder.circular_pattern(extrude, teeth, axis)
 
     # 6b. External: join the patterned teeth into the root cylinder so the
     #     shaft is one body.  Internal: the bore + space cuts already produced

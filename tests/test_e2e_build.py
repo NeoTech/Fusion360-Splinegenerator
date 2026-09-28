@@ -185,5 +185,106 @@ class TestBuildErrors(unittest.TestCase):
             )
 
 
+def _params(gender="external"):
+    return {
+        "spline_type": "metric",
+        "gender": gender,
+        "teeth": 14,
+        "module_mm": 2.0,
+        "pressure_angle_deg": 30.0,
+        "profile_shift": 0.0,
+        "length_mm": 40.0,
+        "chamfer_mm": 0.0,
+    }
+
+
+def _pattern_feature(comp):
+    for kind, feat in comp.features_log:
+        if kind == "circular_pattern":
+            return feat
+    return None
+
+
+class TestTargetFacePlacement(unittest.TestCase):
+    """The optional ``target`` argument places sketches on a chosen surface and
+    patterns about its axis instead of the XY plane / origin Z."""
+
+    def test_no_target_uses_xy_plane_and_origin_z(self):
+        comp, plane = _new_component()
+        builder.build_spline(comp, plane, _params())
+        # Every sketch sits on the supplied XY plane.
+        for sk in comp.sketches_list:
+            self.assertIs(sk.plane, plane)
+        # Pattern runs about the origin Z axis.
+        self.assertIs(_pattern_feature(comp).axis, comp.zConstructionAxis)
+        # No construction geometry was derived.
+        self.assertEqual(comp.construction_axes_log, [])
+        self.assertEqual(comp.construction_planes_log, [])
+
+    def test_cylindrical_target_uses_perp_plane_and_cylinder_axis(self):
+        comp, plane = _new_component()
+        bore = adsk_stub._Face(
+            0.0, 40.0, geometry=adsk_stub._CylindricalGeometry(axis=(0.0, 0.0, 1.0))
+        )
+        builder.build_spline(comp, plane, _params("internal"), target=bore)
+        # A perpendicular construction plane was created and used for sketches.
+        self.assertEqual(len(comp.construction_planes_log), 1)
+        derived_plane = comp.construction_planes_log[0][2]
+        for sk in comp.sketches_list:
+            self.assertIs(sk.plane, derived_plane)
+        # A construction axis from the circular face drives the pattern.
+        self.assertEqual(len(comp.construction_axes_log), 1)
+        derived_axis = comp.construction_axes_log[0][2]
+        self.assertIs(_pattern_feature(comp).axis, derived_axis)
+        self.assertIsNot(_pattern_feature(comp).axis, comp.zConstructionAxis)
+
+    def test_planar_target_with_circular_edge_uses_face_and_normal_axis(self):
+        comp, plane = _new_component()
+        end_face = adsk_stub._Face(
+            40.0,
+            40.0,
+            geometry=adsk_stub._PlanarGeometry(normal=(0.0, 0.0, 1.0)),
+            edges=[adsk_stub._Edge("circle")],
+        )
+        builder.build_spline(comp, plane, _params("external"), target=end_face)
+        # A coincident construction plane is created and used for sketches so
+        # the face's projected outline never pollutes the profile list.
+        self.assertEqual(len(comp.construction_planes_log), 1)
+        self.assertEqual(comp.construction_planes_log[0][0], "offset")
+        derived_plane = comp.construction_planes_log[0][2]
+        for sk in comp.sketches_list:
+            self.assertIs(sk.plane, derived_plane)
+            self.assertIsNot(sk.plane, end_face)
+        # Pattern axis is a derived normal-to-face axis.
+        self.assertEqual(len(comp.construction_axes_log), 1)
+        derived_axis = comp.construction_axes_log[0][2]
+        self.assertIs(_pattern_feature(comp).axis, derived_axis)
+
+    def test_planar_target_without_edge_falls_back_to_origin_z(self):
+        comp, plane = _new_component()
+        face = adsk_stub._Face(
+            40.0,
+            40.0,
+            geometry=adsk_stub._PlanarGeometry(normal=(0.0, 0.0, 1.0)),
+            edges=[],  # no circular edge to anchor a normal axis
+        )
+        builder.build_spline(comp, plane, _params("external"), target=face)
+        # Still sketched on a coincident plane, not the raw face.
+        derived_plane = comp.construction_planes_log[0][2]
+        for sk in comp.sketches_list:
+            self.assertIs(sk.plane, derived_plane)
+            self.assertIsNot(sk.plane, face)
+        # No circular edge -> pattern axis falls back to origin Z.
+        self.assertIs(_pattern_feature(comp).axis, comp.zConstructionAxis)
+
+    def test_construction_plane_target_sketches_on_it_origin_z(self):
+        comp, plane = _new_component()
+        offset = adsk_stub._Plane("OFFSET")  # no .geometry -> treated as a plane
+        builder.build_spline(comp, plane, _params("external"), target=offset)
+        for sk in comp.sketches_list:
+            self.assertIs(sk.plane, offset)
+        self.assertIs(_pattern_feature(comp).axis, comp.zConstructionAxis)
+
+
 if __name__ == "__main__":
     unittest.main()

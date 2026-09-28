@@ -10,7 +10,7 @@ callers pass millimetres and we convert with ``MM_TO_CM``.
 
 from __future__ import annotations
 
-from typing import Any, List
+from typing import Any, List, Tuple
 
 import adsk.core as core
 import adsk.fusion as fusion
@@ -29,6 +29,130 @@ def _origin_feature(comp: fusion.Component):
 def z_axis(comp: fusion.Component) -> Any:
     """The component Z construction axis, used as the pattern axis."""
     return comp.zConstructionAxis
+
+
+# ---------------------------------------------------------------------------
+# Optional target-face placement
+# ---------------------------------------------------------------------------
+def _object_type(obj: Any) -> str:
+    return getattr(obj, "objectType", "") or ""
+
+
+def add_axis_from_circular_face(comp: fusion.Component, face: Any) -> Any:
+    """A construction axis coincident with a cylindrical/conical/toroidal face.
+
+    Parametric-safe (works in both parametric and direct modes).
+    """
+    axes = comp.constructionAxes
+    inp = axes.createInput()
+    if not inp.setByCircularFace(face):
+        return None
+    return axes.add(inp)
+
+
+def add_plane_perpendicular_to_face(comp: fusion.Component, face: Any) -> Any:
+    """A construction plane perpendicular to a cylindrical face's axis.
+
+    This is the cross-section plane the spline profile is sketched on when the
+    target is a bore / shaft outer cylinder.
+    """
+    planes = comp.constructionPlanes
+    inp = planes.createInput()
+    if not inp.setByPerpendicularToPlane(face, None, None, False):
+        return None
+    return planes.add(inp)
+
+
+def add_plane_coincident_with_face(comp: fusion.Component, face: Any) -> Any:
+    """A construction plane lying exactly on a planar face (zero offset).
+
+    Sketching directly on a ``BRepFace`` makes Fusion passively project that
+    face's boundary edges into the new sketch, which creates extra fillable
+    profiles and lets ``profiles.item(0)`` grab the wrong (whole-face) region.
+    A coincident construction plane carries no projected geometry, so the only
+    profile present is the one we draw.  Parametric-safe via ``setByOffset``.
+    """
+    planes = comp.constructionPlanes
+    inp = planes.createInput()
+    zero = core.ValueInput.createByReal(0.0)
+    if not inp.setByOffset(face, zero):
+        return None
+    return planes.add(inp)
+
+
+def add_axis_normal_to_planar_face(comp: fusion.Component, face: Any) -> Any:
+    """A construction axis normal to a planar face, anchored at the centre of a
+    circular edge when one exists (the common shaft-end case).
+
+    Returns ``None`` if no circular edge anchors the axis (caller falls back to
+    the origin Z axis).
+    """
+    try:
+        edges = list(face.edges)
+    except Exception:
+        edges = []
+    for edge in edges:
+        try:
+            pts = comp.constructionPoints
+            pin = pts.createInput()
+            if not pin.setByCenter(edge):
+                continue
+            center = pts.add(pin)
+            axes = comp.constructionAxes
+            ain = axes.createInput()
+            if ain.setByNormalToFaceAtPoint(face, center):
+                return axes.add(ain)
+        except Exception:
+            continue
+    return None
+
+
+def resolve_target(
+    component: fusion.Component, plane: Any, target: Any
+) -> Tuple[Any, Any]:
+    """Resolve an optional selected face/plane into (sketch_geom, pattern_axis).
+
+    ``target`` is the entity the user picked (a BRepFace or ConstructionPlane),
+    or ``None``.  Auto-detects the geometry type:
+
+    * ``None``                       -> (``plane``, origin Z axis)  [default]
+    * cylindrical / conical face     -> (perpendicular plane, cylinder axis)
+    * planar face                    -> (the face, normal axis through a
+      circular-edge centre, else origin Z)
+    * construction plane / unknown   -> (the entity, origin Z axis)
+
+    Any failure to build the derived geometry falls back to the default so a
+    selection never breaks the whole build.
+    """
+    if target is None:
+        return plane, z_axis(component)
+
+    geom = getattr(target, "geometry", None)
+    try:
+        if geom is not None and hasattr(geom, "axis") and not hasattr(geom, "normal"):
+            # Cylindrical / conical / toroidal face: use its axis + a
+            # perpendicular cross-section plane.
+            axis = add_axis_from_circular_face(component, target)
+            sk_plane = add_plane_perpendicular_to_face(component, target)
+            if axis is not None and sk_plane is not None:
+                return sk_plane, axis
+            return plane, z_axis(component)
+
+        if geom is not None and hasattr(geom, "normal"):
+            # Planar face: sketch on a coincident construction plane (never on
+            # the raw face, whose outline Fusion would passively project into
+            # the sketch and pollute the profile list); axis normal to it
+            # (through a circular-edge centre when available).
+            axis = add_axis_normal_to_planar_face(component, target)
+            sk_plane = add_plane_coincident_with_face(component, target)
+            if sk_plane is None:
+                sk_plane = target
+            return sk_plane, (axis if axis is not None else z_axis(component))
+    except Exception:
+        return plane, z_axis(component)
+
+    # Construction plane or anything else: sketch on it, keep the origin axis.
+    return target, z_axis(component)
 
 
 def extrude_profile(

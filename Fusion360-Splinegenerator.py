@@ -89,6 +89,7 @@ ID_MINOR = "minor_diameter"
 ID_TOOTH_WIDTH = "tooth_width"
 ID_LENGTH = "length"
 ID_CHAMFER = "chamfer"
+ID_TARGET = "target_face"
 
 _SPLINE_TYPES = [
     "Involute (Metric DIN 5480)",
@@ -202,6 +203,15 @@ class _CommandCreatedHandler(core.CommandCreatedEventHandler):
             _add_linear(inputs, ID_TOOTH_WIDTH, "Tooth Width", 8.73)
             _add_linear(inputs, ID_LENGTH, "Length", 40.0)
             _add_linear(inputs, ID_CHAMFER, "Lead-in Chamfer", 1.0)
+
+            # Optional target surface: pick a face (planar end face or a bore /
+            # shaft cylinder) or a construction plane to place the spline on.
+            # Left empty -> builds on the XY plane about the origin Z axis.
+            tgt = inputs.addSelectionInput(
+                ID_TARGET, "Target Face (optional)",
+                "Select a face or plane to place the spline on (leave empty for XY plane).",
+            )
+            tgt.setSelectionLimits(0, 1)
 
             # Events. These are per-dialog: keep them in _cmd_handlers (NOT
             # _handlers) so the destroy handler can release them without
@@ -383,6 +393,23 @@ def _dropdown_value(inp) -> str:
     return ""
 
 
+def _selected_target(inputs: core.CommandInputs):
+    """Return the entity the user picked in the Target Face input, or None.
+
+    A SelectionCommandInput holds zero or more selections; we allow at most one
+    and return its ``entity`` (a BRepFace or ConstructionPlane).
+    """
+    inp = inputs.itemById(ID_TARGET)
+    if inp is None:
+        return None
+    try:
+        if inp.selectionCount > 0:
+            return inp.selection(0).entity
+    except Exception:
+        return None
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Execute handler
 # ---------------------------------------------------------------------------
@@ -400,9 +427,14 @@ class _CommandExecuteHandler(core.CommandEventHandler):
             comp = design.rootComponent
             plane = comp.xYConstructionPlane
 
+            # Optional user-selected target surface (face or plane). When set,
+            # the builder places every sketch on it and patterns about its
+            # axis; when empty the spline is built on the XY plane.
+            target = _selected_target(inputs)
+
             # Building all features inside the command's execute handler is
             # automatically grouped by Fusion into a single undo transaction.
-            builder.build_spline(comp, plane, params)
+            builder.build_spline(comp, plane, params, target)
         except Exception:
             if _ui:
                 _ui.messageBox("Build error:\n" + traceback.format_exc())
