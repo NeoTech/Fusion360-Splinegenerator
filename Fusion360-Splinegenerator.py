@@ -90,6 +90,7 @@ ID_TOOTH_WIDTH = "tooth_width"
 ID_LENGTH = "length"
 ID_CHAMFER = "chamfer"
 ID_TARGET = "target_face"
+ID_BUILD_MODE = "build_mode"
 
 _SPLINE_TYPES = [
     "Involute (Metric DIN 5480)",
@@ -97,6 +98,9 @@ _SPLINE_TYPES = [
     "Parallel-Side (PTO / SAE J499)",
 ]
 _GENDERS = ["External Shaft", "Internal Hub"]
+# New Body builds a standalone spline; Cut into Existing subtractively bores /
+# grooves the spline into the body the selected target face belongs to.
+_BUILD_MODES = ["New Body", "Cut into Existing"]
 _PRESSURE_ANGLES = ["30", "37.5", "45"]
 # ANSI B92.1 stub diametral-pitch series (major/minor DP), from the presets.
 _DP_SERIES = list(presets.DP_SERIES)
@@ -146,6 +150,12 @@ class _CommandCreatedHandler(core.CommandCreatedEventHandler):
             )
             for i, name in enumerate(_GENDERS):
                 gd.listItems.add(name, i == 0)
+
+            bm = inputs.addDropDownCommandInput(
+                ID_BUILD_MODE, "Build Mode", core.DropDownStyles.TextListDropDownStyle
+            )
+            for i, name in enumerate(_BUILD_MODES):
+                bm.listItems.add(name, i == 0)
 
             pr = inputs.addDropDownCommandInput(
                 ID_PRESET, "Preset", core.DropDownStyles.TextListDropDownStyle
@@ -445,10 +455,13 @@ def _collect_params(inputs: core.CommandInputs) -> dict:
     kind = _kind_for_spline_type(spline_type_val)
     gender_val = _dropdown_value(inputs.itemById(ID_GENDER))
     gender = "internal" if gender_val.startswith("Internal") else "external"
+    mode_val = _dropdown_value(inputs.itemById(ID_BUILD_MODE))
+    build_mode = "cut" if mode_val.startswith("Cut") else "new"
 
     params = {
         "spline_type": kind,
         "gender": gender,
+        "build_mode": build_mode,
         "teeth": int(inputs.itemById(ID_TEETH).value),
         "length_mm": _linear_mm(inputs, ID_LENGTH),
         "chamfer_mm": _linear_mm(inputs, ID_CHAMFER),

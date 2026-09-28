@@ -215,6 +215,24 @@ class _SelectionInput(_Input):
         return self._selections[i]
 
 
+class _BoolInput:
+    """Stub for BoolCommandInput: a checkbox whose .value is a real bool."""
+
+    def __init__(self, input_id, value=False):
+        self.id = input_id
+        self._value = bool(value)
+        self.isEnabled = True
+        self.isVisible = True
+
+    @property
+    def value(self):
+        return self._value
+
+    @value.setter
+    def value(self, v):
+        self._value = bool(v)
+
+
 class CommandInputs:
     """Minimal command-inputs container for testing the add-in logic."""
 
@@ -224,6 +242,14 @@ class CommandInputs:
 
     def addDropDownCommandInput(self, input_id, *a, **k):
         inp = _DropDown(input_id)
+        self._inputs[input_id] = inp
+        self._order.append(inp)
+        return inp
+
+    def addBoolValueInput(self, input_id, *a, **k):
+        # Signature: (Id, Name, isCheckBox, resourceFolder, initialValue).
+        # Initial value is the 5th positional argument.
+        inp = _BoolInput(input_id, value=a[4] if len(a) > 4 else False)
         self._inputs[input_id] = inp
         self._order.append(inp)
         return inp
@@ -435,9 +461,11 @@ class _ExtrudeInput:
         self.profile = profile
         self.operation = operation
         self._distance = 0.0
+        self.symmetric = False
 
     def setDistanceExtent(self, symmetric, value_input):
         self._distance = getattr(value_input, "_internal", 0.0)
+        self.symmetric = bool(symmetric)
 
 
 class _ExtrudeFeatures:
@@ -451,7 +479,8 @@ class _ExtrudeFeatures:
     def add(self, inp):
         f = types.SimpleNamespace(
             profile=inp.profile, operation=inp.operation,
-            distance=inp._distance, parentComponent=self._component,
+            distance=inp._distance, symmetric=inp.symmetric,
+            parentComponent=self._component,
         )
         self.created.append(f)
         self._component.features_log.append(("extrude", f))

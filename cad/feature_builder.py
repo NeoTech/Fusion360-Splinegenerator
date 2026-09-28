@@ -159,10 +159,18 @@ def extrude_profile(
     profile: fusion.Profile,
     length_mm: float,
     cut: bool = False,
+    symmetric: bool = False,
 ) -> fusion.ExtrudeFeature:
-    """Extrude (boss) or cut a single sketch profile along +Z by ``length_mm``.
+    """Extrude (boss) or cut a single sketch profile along the sketch normal.
 
     ``cut=True`` produces a subtractive (internal hub) operation.
+
+    ``symmetric=True`` extrudes equally to both sides of the sketch plane.  For
+    a *cut into an existing body* this is the robust choice: the cut reaches
+    ``length_mm`` into the material on whichever side the stock actually lies,
+    so the user never has to guess a direction (the face normal may point into
+    or out of the part).  The total distance is doubled so each side spans the
+    requested ``length_mm``.
     """
     comp = profile.parentSketch.parentComponent
     feats = comp.features.extrudeFeatures
@@ -173,9 +181,16 @@ def extrude_profile(
         else fusion.FeatureOperations.NewBodyFeatureOperation
     )
     inp = feats.createInput(profile, operation)
-    inp.setDistanceExtent(
-        False, core.ValueInput.createByString(f"{length_mm} mm")
-    )
+    if symmetric:
+        # Symmetric about the profile plane: total = 2 * length so each side
+        # (and therefore the depth into the stock) is length_mm.
+        inp.setDistanceExtent(
+            True, core.ValueInput.createByString(f"{2.0 * length_mm} mm")
+        )
+    else:
+        inp.setDistanceExtent(
+            False, core.ValueInput.createByString(f"{length_mm} mm")
+        )
     return feats.add(inp)
 
 

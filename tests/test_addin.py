@@ -31,6 +31,9 @@ def _fresh_inputs():
     gd = inputs.addDropDownCommandInput(addin.ID_GENDER)
     for i, name in enumerate(addin._GENDERS):
         gd.listItems.add(name, i == 0)
+    bm = inputs.addDropDownCommandInput(addin.ID_BUILD_MODE)
+    for i, name in enumerate(addin._BUILD_MODES):
+        bm.listItems.add(name, i == 0)
     pr = inputs.addDropDownCommandInput(addin.ID_PRESET)
     for i, name in enumerate(addin.presets.preset_names()):
         pr.listItems.add(name, i == 0)

@@ -107,9 +107,23 @@ def build_spline(
     given, all sketches are built on that surface and the circular pattern runs
     about its axis (cylinder axis when possible, else the face normal).  When
     ``None`` the spline is built on ``plane`` about the origin Z axis.
+
+    ``params['build_mode']`` (optional, default ``'new'``):
+        'new'  : build a standalone blank cylinder, then add/cut the teeth into
+                 it (a self-contained spline body).
+        'cut'  : no blank; cut the spline profile directly into the existing
+                 body the ``target`` face belongs to (subtractive).  Intended
+                 for adding a hub bore / spline groove to a premade part.
     """
     profile, radii_mm, key = _resolve_profile_points(params)
     internal = params.get("gender", "external") == "internal"
+    build_mode = params.get("build_mode", "new")
+    cut_into_existing = build_mode == "cut"
+    # In cut-into-existing mode the cut is made symmetric about the sketch
+    # plane so it reaches into the stock on whichever side the material lies,
+    # regardless of which way the target face's normal points.  This removes
+    # any need for the user to guess a cut direction.
+    cut_symmetric = cut_into_existing
     teeth = int(params["teeth"])
     length_mm = float(params["length_mm"])
     chamfer_mm = float(params.get("chamfer_mm", 0.0))
@@ -119,25 +133,40 @@ def build_spline(
     #    is supplied or the selection cannot be interpreted.
     sketch_geom, axis = feature_builder.resolve_target(component, plane, target)
 
-    # 1. Base blank: a solid cylinder at the root radius (external shaft) or
-    #    major radius (internal hub).  The teeth are then joined to / cut from
-    #    this body so the result is a single connected solid.
-    base_radius = key["major"] if internal else key["root"]
-    base_profile = sketch_builder.add_circle_profile(component, sketch_geom, base_radius)
-    feature_builder.extrude_profile(base_profile, length_mm, cut=False)
-
-    # 1b. Internal: bore the centre out to the tooth-crest radius (key["root"],
-    #     the small radius of a hub) so the blank becomes a tube whose inner
-    #     wall is exactly the crest circle.  The space cuts then run from this
-    #     crest radius outward to the groove bottom (key["major"]), opening
-    #     cleanly into the bore.  Boring to anything less than the crest leaves
-    #     a solid band behind the teeth and the spaces become closed pockets
-    #     that never connect to the bore.
-    if internal:
-        bore_profile = sketch_builder.add_circle_profile(
-            component, sketch_geom, key["root"]
+    if cut_into_existing:
+        # Cut mode: no blank body.  For an internal hub, bore the centre out to
+        # the crest radius directly into the existing material; the patterned
+        # space cuts (added below) then open from that bore out to the groove
+        # bottom, leaving a toothed internal spline in the part.
+        if internal:
+            bore_profile = sketch_builder.add_circle_profile(
+                component, sketch_geom, key["root"]
+            )
+            feature_builder.extrude_profile(
+                bore_profile, length_mm, cut=True, symmetric=cut_symmetric
+            )
+    else:
+        # 1. Base blank: a solid cylinder at the root radius (external shaft) or
+        #    major radius (internal hub).  The teeth are then joined to / cut
+        #    from this body so the result is a single connected solid.
+        base_radius = key["major"] if internal else key["root"]
+        base_profile = sketch_builder.add_circle_profile(
+            component, sketch_geom, base_radius
         )
-        feature_builder.extrude_profile(bore_profile, length_mm, cut=True)
+        feature_builder.extrude_profile(base_profile, length_mm, cut=False)
+
+        # 1b. Internal: bore the centre out to the tooth-crest radius
+        #     (key["root"], the small radius of a hub) so the blank becomes a
+        #     tube whose inner wall is exactly the crest circle.  The space cuts
+        #     then run from this crest radius outward to the groove bottom
+        #     (key["major"]), opening cleanly into the bore.  Boring to anything
+        #     less than the crest leaves a solid band behind the teeth and the
+        #     spaces become closed pockets that never connect to the bore.
+        if internal:
+            bore_profile = sketch_builder.add_circle_profile(
+                component, sketch_geom, key["root"]
+            )
+            feature_builder.extrude_profile(bore_profile, length_mm, cut=True)
 
     # 2-4. Sketch: reference circles + a single closed tooth/space loop.
     sketch = sketch_builder.find_or_create_sketch_on(component, sketch_geom)
@@ -150,20 +179,25 @@ def build_spline(
 
     profile = sketch.profiles.item(0)
 
-    # 5. Extrude (external tooth boss) or cut (internal space) the single tooth.
-    extrude = feature_builder.extrude_profile(profile, length_mm, cut=internal)
+    # 5. Extrude the single tooth.  Additive (boss) only for an external shaft
+    #    built as a new body; everything else (internal spaces, or any profile
+    #    cut into an existing part) is subtractive.
+    tooth_cut = internal or cut_into_existing
+    extrude = feature_builder.extrude_profile(
+        profile, length_mm, cut=tooth_cut, symmetric=cut_symmetric
+    )
 
     # 6. Circular pattern across z teeth around the resolved axis.
     pattern = feature_builder.circular_pattern(extrude, teeth, axis)
 
-    # 6b. External: join the patterned teeth into the root cylinder so the
-    #     shaft is one body.  Internal: the bore + space cuts already produced
-    #     the toothed ring, so nothing to join.
-    if not internal:
+    # 6b. External new-body: join the patterned teeth into the root cylinder so
+    #     the shaft is one body.  Internal (blank already toothed by the cuts)
+    #     and cut-into-existing modes need no join.
+    if not internal and not cut_into_existing:
         feature_builder.join_to_base(component)
 
-    # 7. Lead-in chamfer on the end faces (best effort).
-    if chamfer_mm > 0:
+    # 7. Lead-in chamfer on the end faces (best effort, new-body only).
+    if chamfer_mm > 0 and not cut_into_existing:
         try:
             body = component.bRepBodies.item(0)
             faces = feature_builder.collect_end_faces(body, length_mm)

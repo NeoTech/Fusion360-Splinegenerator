@@ -205,6 +205,87 @@ def _pattern_feature(comp):
     return None
 
 
+def _extrude_ops(comp):
+    """The FeatureOperations value of each extrude feature, in order."""
+    return [f.operation for (k, f) in comp.features_log if k == "extrude"]
+
+
+class TestBuildModeCutIntoExisting(unittest.TestCase):
+    """build_mode='cut' subtractively bores/grooves the spline into the existing
+    body instead of building a standalone blank."""
+
+    def test_internal_cut_bore_and_spaces_no_blank(self):
+        comp, plane = _new_component()
+        p = _params("internal")
+        p["build_mode"] = "cut"
+        builder.build_spline(comp, plane, p)
+        # No base blank (NewBody) extrude: only the bore cut + the space cut.
+        self.assertNotIn(
+            adsk_stub.FeatureOperations.NewBodyFeatureOperation, _extrude_ops(comp)
+        )
+        self.assertEqual(
+            _extrude_ops(comp),
+            [
+                adsk_stub.FeatureOperations.CutFeatureOperation,
+                adsk_stub.FeatureOperations.CutFeatureOperation,
+            ],
+        )
+        # No standalone body created and nothing joined.
+        self.assertEqual(comp.bRepBodies.count, 0)
+        self.assertNotIn("combine", _feature_kinds(comp))
+        self.assertEqual(
+            _feature_kinds(comp), ["extrude", "extrude", "circular_pattern"]
+        )
+
+    def test_external_cut_grooves_no_blank_no_join(self):
+        comp, plane = _new_component()
+        p = _params("external")
+        p["build_mode"] = "cut"
+        builder.build_spline(comp, plane, p)
+        # External cut mode: the tooth profile is cut (subtractive), no blank.
+        self.assertEqual(
+            _extrude_ops(comp), [adsk_stub.FeatureOperations.CutFeatureOperation]
+        )
+        self.assertNotIn("combine", _feature_kinds(comp))
+        self.assertEqual(_feature_kinds(comp), ["extrude", "circular_pattern"])
+
+    def test_new_mode_still_builds_blank(self):
+        # Default (new) internal mode keeps the original blank+bore behaviour.
+        comp, plane = _new_component()
+        builder.build_spline(comp, plane, _params("internal"))
+        self.assertEqual(
+            _extrude_ops(comp),
+            [
+                adsk_stub.FeatureOperations.NewBodyFeatureOperation,
+                adsk_stub.FeatureOperations.CutFeatureOperation,
+                adsk_stub.FeatureOperations.CutFeatureOperation,
+            ],
+        )
+
+    def test_cut_mode_uses_symmetric_extrudes(self):
+        # Cut-into-existing makes every cut symmetric about the sketch plane so
+        # it bites into the stock regardless of the face-normal direction.
+        comp, plane = _new_component()
+        p = _params("internal")
+        p["build_mode"] = "cut"
+        builder.build_spline(comp, plane, p)
+        cuts = [(k, f) for (k, f) in comp.features_log if k == "extrude"]
+        self.assertTrue(cuts, "expected extrude features")
+        self.assertTrue(all(f.symmetric for (_, f) in cuts), cuts)
+        # Symmetric distance is doubled so each side spans the requested length
+        # (40 mm -> 4 cm one side -> 8 cm total).
+        self.assertTrue(all(abs(f.distance - 8.0) < 1e-9 for (_, f) in cuts),
+                        [f.distance for (_, f) in cuts])
+
+    def test_new_mode_extrudes_are_not_symmetric(self):
+        comp, plane = _new_component()
+        builder.build_spline(comp, plane, _params("internal"))
+        extrudes = [f for (k, f) in comp.features_log if k == "extrude"]
+        self.assertTrue(all(not f.symmetric for f in extrudes))
+        self.assertTrue(all(abs(f.distance - 4.0) < 1e-9 for f in extrudes),
+                        [f.distance for f in extrudes])
+
+
 class TestTargetFacePlacement(unittest.TestCase):
     """The optional ``target`` argument places sketches on a chosen surface and
     patterns about its axis instead of the XY plane / origin Z."""
