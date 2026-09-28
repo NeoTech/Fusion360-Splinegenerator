@@ -626,8 +626,9 @@ class _Faces:
 
 
 class _Body:
-    def __init__(self, faces):
+    def __init__(self, faces, index=None):
         self.faces = _Faces(faces)
+        self.index = index
 
 
 # ---------------------------------------------------------------------------
@@ -754,7 +755,7 @@ class _Bodies:
         for kind, f in self._component.features_log:
             if kind == "extrude":
                 length_cm = f.distance
-        return _Body([_Face(0.0, 0.0), _Face(length_cm, length_cm)])
+        return _Body([_Face(0.0, 0.0), _Face(length_cm, length_cm)], index=i)
 
     @property
     def count(self):

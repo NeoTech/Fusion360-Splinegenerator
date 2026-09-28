@@ -367,5 +367,28 @@ class TestTargetFacePlacement(unittest.TestCase):
         self.assertIs(_pattern_feature(comp).axis, comp.zConstructionAxis)
 
 
+class TestJoinScopedToNewBodies(unittest.TestCase):
+    """A second spline built where one already exists must NOT merge the
+    pre-existing body into the new one (the join is scoped to the bodies this
+    build created)."""
+
+    def test_join_targets_new_blank_not_preexisting_body(self):
+        comp, plane = _new_component()
+        # Simulate a body already in the component (e.g. a prior spline).
+        comp._bodies = 1
+        builder.build_spline(comp, plane, _params("external"))
+        combines = [f for (k, f) in comp.features_log if k == "combine"]
+        self.assertEqual(len(combines), 1)
+        combine = combines[0]
+        # The blank this build created is at index 1 (index 0 pre-existed), so
+        # the join target must be that body, never the pre-existing one.
+        self.assertEqual(combine.target.index, 1)
+        # Tools are only the bodies created after the blank (the teeth), so the
+        # pre-existing body (index 0) is never swept in.
+        tool_indices = [t.index for t in combine.tools]
+        self.assertNotIn(0, tool_indices)
+        self.assertTrue(all(i >= 1 for i in tool_indices), tool_indices)
+
+
 if __name__ == "__main__":
     unittest.main()

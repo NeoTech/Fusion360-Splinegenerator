@@ -133,6 +133,12 @@ def build_spline(
     #    is supplied or the selection cannot be interpreted.
     sketch_geom, axis = feature_builder.resolve_target(component, plane, target)
 
+    # Number of bodies that already existed before this build.  The blank we
+    # create below is at this index; scoping the join/chamfer to bodies from
+    # here on keeps any pre-existing body (e.g. a spline already in the same
+    # space) isolated instead of merging it in.
+    base_index = component.bRepBodies.count
+
     if cut_into_existing:
         # Cut mode: no blank body.  For an internal hub, bore the centre out to
         # the crest radius directly into the existing material; the patterned
@@ -194,12 +200,12 @@ def build_spline(
     #     the shaft is one body.  Internal (blank already toothed by the cuts)
     #     and cut-into-existing modes need no join.
     if not internal and not cut_into_existing:
-        feature_builder.join_to_base(component)
+        feature_builder.join_to_base(component, base_index)
 
     # 7. Lead-in chamfer on the end faces (best effort, new-body only).
     if chamfer_mm > 0 and not cut_into_existing:
         try:
-            body = component.bRepBodies.item(0)
+            body = component.bRepBodies.item(base_index)
             faces = feature_builder.collect_end_faces(body, length_mm)
             feature_builder.chamfer_faces(component, faces, chamfer_mm)
         except Exception:

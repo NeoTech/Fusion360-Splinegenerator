@@ -216,18 +216,23 @@ def circular_pattern(
     return pats.add(inp)
 
 
-def join_to_base(comp: fusion.Component) -> Any:
-    """Join every body after the first (the patterned teeth) into the base
-    body (index 0) so the shaft is a single connected solid.
+def join_to_base(comp: fusion.Component, start_index: int = 0) -> Any:
+    """Join the bodies created by *this* build into the blank it created.
 
-    No-op when there is only one body.
+    ``start_index`` is the number of bodies that already existed in the
+    component before this build started.  The blank this build extruded is at
+    ``start_index`` and its patterned teeth follow it, so only bodies from
+    ``start_index`` onward are touched.  Any pre-existing body (e.g. a spline
+    already occupying the same space) stays isolated and is never merged in.
+
+    No-op when this build produced only the blank (no separate tooth bodies).
     """
     bodies = comp.bRepBodies
-    if bodies.count < 2:
+    if bodies.count <= start_index + 1:
         return None
-    base = bodies.item(0)
+    base = bodies.item(start_index)
     tools = core.ObjectCollection.create()
-    for i in range(1, bodies.count):
+    for i in range(start_index + 1, bodies.count):
         tools.add(bodies.item(i))
     combine = comp.features.combineFeatures
     inp = combine.createInput(base, tools)
