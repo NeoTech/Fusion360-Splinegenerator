@@ -92,13 +92,42 @@ def add_closed_polyline(sketch: fusion.Sketch, points_mm: List[Point]) -> List[A
     return lines
 
 
+def add_arc_3pt(sketch: fusion.Sketch, p_start: Point, p_mid: Point, p_end: Point):
+    """Add a single 3-point arc through start/mid/end (millimetres)."""
+    return sketch.sketchCurves.sketchArcs.addByThreePoints(
+        _pt(*p_start), _pt(*p_mid), _pt(*p_end)
+    )
+
+
+def add_line(sketch: fusion.Sketch, p_start: Point, p_end: Point):
+    """Add a single straight line between two points (millimetres)."""
+    return sketch.sketchCurves.sketchLines.addByTwoPoints(_pt(*p_start), _pt(*p_end))
+
+
+def build_tooth_edges(sketch: fusion.Sketch, edges: List[tuple]) -> List[Any]:
+    """Draw a closed loop described as an edge list.
+
+    Each edge is ``("arc", start, mid, end)`` or ``("line", start, end)`` with
+    points in millimetres.  This is how involute teeth are drawn: each flank is
+    one 3-point arc, the tip/crest lands are arcs, and the root/groove bottom is
+    a single straight line, giving tangent-continuous faces with no facets.
+    """
+    out = []
+    for e in edges:
+        if e[0] == "arc":
+            out.append(add_arc_3pt(sketch, e[1], e[2], e[3]))
+        else:
+            out.append(add_line(sketch, e[1], e[2]))
+    return out
+
+
 def build_tooth_profile(
     sketch: fusion.Sketch, points_mm: List[Point], use_spline: bool = True
 ) -> Any:
     """Build the single-tooth (or single-space) closed loop.
 
-    ``use_spline`` selects a fitted-spline loop (involute flanks) versus a
-    straight-line polygon (parallel-side teeth).
+    ``use_spline`` selects a fitted-spline loop versus a straight-line polygon.
+    Involute teeth should instead be drawn with :func:`build_tooth_edges`.
     """
     if use_spline:
         return add_closed_spline(sketch, points_mm, closed=True)

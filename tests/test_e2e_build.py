@@ -72,11 +72,12 @@ class TestBuildMetricExternal(unittest.TestCase):
             extrude.operation, fusion.FeatureOperations.NewBodyFeatureOperation
         )
 
-    def test_sketch_has_lines_and_circles(self):
-        # Involute teeth are drawn as straight-line polygons (flat root, no
-        # sagging closed spline), so expect zero fitted splines.
+    def test_sketch_has_arcs_and_circles(self):
+        # Involute teeth are drawn as 3-point arcs (one per flank) plus a
+        # straight root line, so expect arcs and no fitted splines.
         sk = self.comp.sketches_list[-1]
         self.assertEqual(len(sk.sketchCurves.sketchFittedSplines.created), 0)
+        self.assertGreater(len(sk.sketchCurves.sketchArcs.created), 0)
         self.assertGreater(len(sk.sketchCurves.sketchLines.created), 0)
         self.assertEqual(len(sk.sketchCurves.sketchCircles.created), 4)
 

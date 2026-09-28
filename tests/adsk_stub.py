@@ -283,11 +283,19 @@ class _SketchLine:
         self.endPoint = end
 
 
+class _SketchArc:
+    def __init__(self, start: Point3D, mid: Point3D, end: Point3D):
+        self.startPoint = start
+        self.midPoint = mid
+        self.endPoint = end
+
+
 class _SketchCurves:
     def __init__(self):
         self.sketchCircles = _CircleCollection()
         self.sketchFittedSplines = _SplineCollection()
         self.sketchLines = _LineCollection()
+        self.sketchArcs = _ArcCollection()
 
 
 class _CircleCollection:
@@ -318,6 +326,16 @@ class _LineCollection:
         ln = _SketchLine(p0, p1)
         self.created.append(ln)
         return ln
+
+
+class _ArcCollection:
+    def __init__(self):
+        self.created: List[_SketchArc] = []
+
+    def addByThreePoints(self, p0, p1, p2):
+        a = _SketchArc(p0, p1, p2)
+        self.created.append(a)
+        return a
 
 
 class _Sketch:

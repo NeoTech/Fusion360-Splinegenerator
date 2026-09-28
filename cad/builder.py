@@ -23,10 +23,12 @@ from cad import feature_builder, sketch_builder
 
 
 def _resolve_profile_points(params: Dict[str, Any]):
-    """Return (points_mm, use_spline, geometry_radii_mm, key_radii_mm).
+    """Return (profile, radii_mm, key_radii_mm).
 
-    ``key_radii_mm`` is a dict with ``root`` and ``major`` radii in mm used to
-    build the base blank / hub body.
+    ``profile`` is either ``("edges", edge_list)`` for involute teeth (each
+    flank a 3-point arc) or ``("polyline", point_list)`` for parallel-side
+    teeth.  ``key_radii_mm`` is a dict with ``root`` and ``major`` radii (mm)
+    used to build the base blank / hub body.
     """
     spline_type = params["spline_type"]
     teeth = int(params["teeth"])
@@ -42,12 +44,12 @@ def _resolve_profile_points(params: Dict[str, Any]):
         root_type = params.get("root_type", "flat")
         cdo = float(params.get("center_distance_offset_mm", 0.0))
         if internal:
-            pts = involute_math.internal_space_profile(
+            edges = involute_math.internal_space_edges(
                 module_mm, teeth, pa, x, root_type=root_type,
                 center_distance_offset_mm=cdo,
             )
         else:
-            pts = involute_math.external_tooth_profile(
+            edges = involute_math.external_tooth_edges(
                 module_mm, teeth, pa, x, root_type=root_type,
                 center_distance_offset_mm=cdo,
             )
@@ -57,11 +59,10 @@ def _resolve_profile_points(params: Dict[str, Any]):
         )
         radii = [g["root_radius"], g["base_radius"], g["pitch_radius"], g["major_radius"]]
         key = {"root": g["root_radius"], "major": g["major_radius"], "wall": module_mm}
-        # Draw the involute tooth as a straight-line polygon (not a fitted
-        # spline): a closed spline sags between vertices, which pulls the root
-        # inward and leaves a gap against the base cylinder. Straight segments
-        # through the flank samples keep the root flat and the faces clean.
-        return pts, False, radii, key
+        # Involute teeth are drawn as 3-point arcs (one per flank) anchored on
+        # the root/pitch/major construction circles, giving tangent-continuous
+        # faces with no facets.
+        return ("edges", edges), radii, key
 
     if spline_type == "parallel":
         major = float(params["major_diameter_mm"])
@@ -78,7 +79,7 @@ def _resolve_profile_points(params: Dict[str, Any]):
             "major": g["major_radius"],
             "wall": (major - minor) / 2.0,
         }
-        return pts, False, radii, key
+        return ("polyline", pts), radii, key
 
     raise ValueError(f"Unknown spline_type: {spline_type}")
 
@@ -100,7 +101,7 @@ def build_spline(
         length_mm   : extrusion length
         chamfer_mm  : lead-in chamfer size (0 disables)
     """
-    points_mm, use_spline, radii_mm, key = _resolve_profile_points(params)
+    profile, radii_mm, key = _resolve_profile_points(params)
     internal = params.get("gender", "external") == "internal"
     teeth = int(params["teeth"])
     length_mm = float(params["length_mm"])
@@ -127,7 +128,11 @@ def build_spline(
     # 2-4. Sketch: reference circles + a single closed tooth/space loop.
     sketch = sketch_builder.find_or_create_sketch_on(component, plane)
     sketch_builder.build_reference_circles(sketch, radii_mm)
-    sketch_builder.build_tooth_profile(sketch, points_mm, use_spline=use_spline)
+    kind, data = profile
+    if kind == "edges":
+        sketch_builder.build_tooth_edges(sketch, data)
+    else:
+        sketch_builder.build_tooth_profile(sketch, data, use_spline=False)
 
     profile = sketch.profiles.item(0)
 
