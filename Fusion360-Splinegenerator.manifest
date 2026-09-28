@@ -23,6 +23,6 @@
     "apiVersion": ["2.0", "3.0"],
     "version": "1.0",
     "supportedOS": "windows|mac",
-    "editEnabled": true,
-    "debugEnabled": true
+    "editEnabled": false,
+    "debugEnabled": false
 }
