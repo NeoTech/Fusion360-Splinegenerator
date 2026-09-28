@@ -126,6 +126,37 @@ def _kind_for_spline_type(value: str) -> str:
     return ("metric", "imperial", "parallel")[idx]
 
 
+def _presets_for_kind(kind: str) -> list:
+    """Preset names relevant to the active standard.
+
+    Always includes the "Custom" entry (kind == "custom"); the remaining
+    presets are filtered by their ``spline_type`` so the dropdown never shows,
+    e.g., a DIN 5480 metric preset while the Imperial ANSI standard is picked.
+    """
+    names = []
+    for name, p in presets.PRESETS.items():
+        if p.get("kind") == "custom" or p.get("spline_type") == kind:
+            names.append(name)
+    return names
+
+
+def _populate_presets(inputs: core.CommandInputs, kind: str):
+    """Rebuild the Preset dropdown so it only lists the active standard.
+
+    Selection resets to the first entry (Custom) because a preset from the
+    previous standard is no longer valid once the standard changes.
+    """
+    pr = inputs.itemById(ID_PRESET)
+    if pr is None:
+        return
+    try:
+        pr.listItems.clear()
+        for i, name in enumerate(_presets_for_kind(kind)):
+            pr.listItems.add(name, i == 0)
+    except Exception:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Command creation
 # ---------------------------------------------------------------------------
@@ -161,7 +192,9 @@ class _CommandCreatedHandler(core.CommandCreatedEventHandler):
             pr = inputs.addDropDownCommandInput(
                 ID_PRESET, "Preset", core.DropDownStyles.TextListDropDownStyle
             )
-            for i, name in enumerate(presets.preset_names()):
+            # Populate per the default standard (metric); rebuilt whenever the
+            # spline standard dropdown changes.
+            for i, name in enumerate(_presets_for_kind("metric")):
                 pr.listItems.add(name, i == 0)
 
             pa = inputs.addDropDownCommandInput(
@@ -396,7 +429,13 @@ class _CommandInputChangedHandler(core.InputChangedEventHandler):
                 name = _dropdown_value(changed)
                 _apply_preset(inputs, name)
             elif changed.id == ID_SPLINE_TYPE:
-                _apply_visibility(inputs, _kind_for_spline_type(_dropdown_value(changed)))
+                kind = _kind_for_spline_type(_dropdown_value(changed))
+                # Filter the preset list to the newly-selected standard, then
+                # refresh field visibility. (Programmatic selection in
+                # _apply_preset does not re-fire this event, so there is no
+                # recursion between preset and standard changes.)
+                _populate_presets(inputs, kind)
+                _apply_visibility(inputs, kind)
         except Exception:
             if _ui:
                 _ui.messageBox("Input error:\n" + traceback.format_exc())

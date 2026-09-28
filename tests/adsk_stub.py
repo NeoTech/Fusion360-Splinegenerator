@@ -135,6 +135,9 @@ class _ListItems:
         self._items.append(it)
         return it
 
+    def clear(self):
+        self._items.clear()
+
     def __iter__(self):
         return iter(self._items)
 

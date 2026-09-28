@@ -80,6 +80,33 @@ def _addin_name(i):
     return addin._SPLINE_TYPES[i]
 
 
+class TestPresetFiltering(unittest.TestCase):
+    def test_presets_for_kind_masks_other_standards(self):
+        metric = addin._presets_for_kind("metric")
+        self.assertIn("Custom", metric)
+        self.assertIn("DIN 5480 W30x2x14", metric)
+        self.assertNotIn("ANSI B92.1 16/32 DP 30T 30deg", metric)
+        self.assertNotIn('Tractor PTO 1-3/8" 6T (540 RPM)', metric)
+
+    def test_presets_for_kind_parallel(self):
+        parallel = addin._presets_for_kind("parallel")
+        self.assertIn("Custom", parallel)
+        self.assertIn('Tractor PTO 1-3/8" 6T (540 RPM)', parallel)
+        self.assertNotIn("DIN 5480 W30x2x14", parallel)
+
+    def test_populate_presets_rebuilds_dropdown(self):
+        inputs = _fresh_inputs()
+        pr = inputs.itemById(addin.ID_PRESET)
+        for i, name in enumerate(addin._presets_for_kind("metric")):
+            pr.listItems.add(name, i == 0)
+        addin._populate_presets(inputs, "imperial")
+        names = [it.name for it in pr.listItems]
+        self.assertNotIn("DIN 5480 W30x2x14", names)
+        self.assertIn("ANSI B92.1 16/32 DP 30T 30deg", names)
+        # Selection resets to the first entry (Custom).
+        self.assertTrue(pr.listItems._items[0].isSelected)
+
+
 class TestVisibility(unittest.TestCase):
     def test_metric_shows_module_hides_diameters(self):
         inputs = _fresh_inputs()
