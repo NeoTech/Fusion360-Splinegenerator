@@ -17,6 +17,8 @@ DATA = os.path.join(ROOT, "core", "data")
 SRC_W = os.path.join(ROOT, "tools", "din5480_w.csv")
 SRC_N = os.path.join(ROOT, "tools", "din5480_n.csv")
 SRC_B = os.path.join(ROOT, "tools", "ansi_b921.csv")
+SRC_J = os.path.join(ROOT, "tools", "sae_j744.csv")
+SRC_PTO = os.path.join(ROOT, "tools", "sae_pto.csv")
 
 IN2MM = 25.4
 
@@ -88,20 +90,35 @@ def gen_ansi():
     return rows
 
 
-def gen_pto():
-    data = [
-        ('Tractor PTO 1-3/8" 6T (540 RPM)', 6, 34.9254, 29.4132, 8.73),
-        ('Tractor PTO 1-3/8" 21T (1000 RPM)', 21, 34.9254, 31.75, 3.0),
-        ('Tractor PTO 1-3/4" 20T (1000 RPM)', 20, 44.45, 40.487, 4.0),
-    ]
+def gen_sae():
+    # SAE J744 involute hydraulic motor/pump shaft splines (30 deg flat root).
     rows = []
-    for name, z, maj, mino, tw in data:
-        rows.append({
-            "name": name, "kind": "parallel", "spline_type": "parallel",
-            "gender": "external", "teeth": z, "length_mm": "60",
-            "major_diameter_mm": _num(maj), "minor_diameter_mm": _num(mino),
-            "tooth_width_mm": _num(tw),
-        })
+    with open(SRC_J, newline="", encoding="utf-8") as fh:
+        for r in csv.DictReader(fh):
+            rows.append({
+                "name": r["desig"], "kind": "involute", "spline_type": "imperial",
+                "gender": "external", "teeth": r["z"],
+                "pressure_angle_deg": _num(r["pa"]), "profile_shift": "0",
+                "length_mm": "40", "dp": _num(r["dp"]), "dp_series": r["series"],
+                "root_type": r["root"],
+                "tip_diameter_mm": _num(float(r["major_in"]) * IN2MM),
+                "root_diameter_mm": _num(float(r["minor_in"]) * IN2MM),
+            })
+    return rows
+
+
+def gen_pto():
+    # SAE J499 / ISO 500 parallel-side tractor PTO shafts (types 1-4).
+    rows = []
+    with open(SRC_PTO, newline="", encoding="utf-8") as fh:
+        for r in csv.DictReader(fh):
+            rows.append({
+                "name": r["desig"], "kind": "parallel", "spline_type": "parallel",
+                "gender": "external", "teeth": r["z"], "length_mm": "60",
+                "major_diameter_mm": _num(r["major_mm"]),
+                "minor_diameter_mm": _num(r["minor_mm"]),
+                "tooth_width_mm": _num(r["tooth_width_mm"]),
+            })
     return rows
 
 
@@ -120,6 +137,7 @@ def main():
     write("din5480_w.csv", gen_w())
     write("din5480_n.csv", gen_n())
     write("ansi_b921.csv", gen_ansi())
+    write("sae_j744.csv", gen_sae())
     write("sae_pto.csv", gen_pto())
 
 

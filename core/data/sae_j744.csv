@@ -1,0 +1,10 @@
+name,kind,spline_type,gender,teeth,pressure_angle_deg,profile_shift,length_mm,module_mm,tip_diameter_mm,root_diameter_mm,dp,dp_series,root_type,major_diameter_mm,minor_diameter_mm,tooth_width_mm
+SAE J744 13-4 (A-A flange) 9T 20/40 DP,involute,imperial,external,9,30,0,40,,12.7,8.89,20,20/40,flat,,,
+SAE J744 16-4 (A flange) 9T 16/32 DP,involute,imperial,external,9,30,0,40,,15.875,11.1125,16,16/32,flat,,,
+SAE J744 19-4 (A flange) 11T 16/32 DP,involute,imperial,external,11,30,0,40,,19.05,14.2875,16,16/32,flat,,,
+SAE J744 22-4 (B flange) 13T 16/32 DP,involute,imperial,external,13,30,0,40,,22.225,17.4625,16,16/32,flat,,,
+SAE J744 25-4 (B-B flange) 15T 16/32 DP,involute,imperial,external,15,30,0,40,,25.4,20.6375,16,16/32,flat,,,
+SAE J744 32-4 (C flange) 14T 12/24 DP,involute,imperial,external,14,30,0,40,,31.75,26.7758,12,12/24,flat,,,
+SAE J744 38-4 (C-C flange) 17T 12/24 DP,involute,imperial,external,17,30,0,40,,38.1,33.1258,12,12/24,flat,,,
+SAE J744 44-4 (D flange) 13T 8/16 DP,involute,imperial,external,13,30,0,40,,44.45,36.9887,8,8/16,flat,,,
+SAE J744 50-4 (F flange) 15T 8/16 DP,involute,imperial,external,15,30,0,40,,50.8,43.3387,8,8/16,flat,,,

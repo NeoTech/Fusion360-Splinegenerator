@@ -13,6 +13,7 @@ Data files
 * ``din5480_w.csv``  : DIN 5480 W-series (full-depth) metric involute
 * ``din5480_n.csv``  : DIN 5480 N-series (reduced-depth) metric involute
 * ``ansi_b921.csv``  : ANSI B92.1 / SAE imperial involute
+* ``sae_j744.csv``   : SAE J744 hydraulic motor/pump involute shaft splines
 * ``sae_pto.csv``    : SAE J499 / ISO 500 parallel-side tractor PTO
 
 Each CSV uses a uniform superset header; an empty cell means the field is
@@ -41,6 +42,7 @@ _DATA_DIR = os.path.join(_HERE, "data")
 # CSV files are loaded in this order; "Custom" is always first in PRESETS.
 _DATA_FILES = [
     "sae_pto.csv",
+    "sae_j744.csv",
     "din5480_w.csv",
     "din5480_n.csv",
     "ansi_b921.csv",
@@ -106,7 +108,7 @@ def reload_presets() -> Dict[str, Dict[str, Any]]:
 
 # ANSI B92.1 stub diametral-pitch series (major/minor DP).  The UI dropdown
 # offers these; the major DP drives the pitch diameter (D = z / P_d).
-DP_SERIES = ["12/24", "16/32", "24/48", "32/64", "20/40", "40/80", "48/96"]
+DP_SERIES = ["12/24", "16/32", "24/48", "32/64", "20/40", "40/80", "48/96", "8/16"]
 
 
 def dp_series_to_major_dp(series: str) -> float:
