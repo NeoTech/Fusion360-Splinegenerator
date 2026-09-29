@@ -37,6 +37,9 @@ def _fresh_inputs():
     pr = inputs.addDropDownCommandInput(addin.ID_PRESET)
     for i, name in enumerate(addin.presets.preset_names()):
         pr.listItems.add(name, i == 0)
+    ps = inputs.addDropDownCommandInput(addin.ID_PROFILE_SERIES)
+    for i, name in enumerate(addin._PROFILE_SERIES):
+        ps.listItems.add(name, i == 0)
     pa = inputs.addDropDownCommandInput(addin.ID_PRESSURE_ANGLE)
     for i, name in enumerate(addin._PRESSURE_ANGLES):
         pa.listItems.add(name, i == 1)
@@ -56,6 +59,8 @@ def _fresh_inputs():
         (addin.ID_MAJOR, 34.9254),
         (addin.ID_MINOR, 29.4132),
         (addin.ID_TOOTH_WIDTH, 8.73),
+        (addin.ID_TIP_DIA, 0.0),
+        (addin.ID_ROOT_DIA, 0.0),
         (addin.ID_LENGTH, 40.0),
         (addin.ID_CHAMFER, 1.0),
         (addin.ID_SLOP, 0.0),
@@ -105,6 +110,51 @@ class TestPresetFiltering(unittest.TestCase):
         self.assertIn("ANSI B92.1 16/32 DP 30T 30deg", names)
         # Selection resets to the first entry (Custom).
         self.assertTrue(pr.listItems._items[0].isSelected)
+
+
+class TestProfileSeriesFiltering(unittest.TestCase):
+    def test_metric_series_W_excludes_N(self):
+        w = addin._presets_for_kind("metric", "W")
+        self.assertIn("Custom", w)
+        self.assertIn("DIN 5480 W30x2x14", w)
+        self.assertNotIn("DIN 5480 N40x2.0x18", w)
+
+    def test_metric_series_N_excludes_W(self):
+        n = addin._presets_for_kind("metric", "N")
+        self.assertIn("Custom", n)
+        self.assertIn("DIN 5480 N40x2.0x18", n)
+        self.assertNotIn("DIN 5480 W30x2x14", n)
+
+    def test_no_series_returns_all_metric(self):
+        allm = addin._presets_for_kind("metric")
+        self.assertIn("DIN 5480 W30x2x14", allm)
+        self.assertIn("DIN 5480 N40x2.0x18", allm)
+
+    def test_series_ignored_for_non_metric(self):
+        # A series filter must not drop imperial presets.
+        imp = addin._presets_for_kind("imperial", "N")
+        self.assertIn("ANSI B92.1 16/32 DP 30T 30deg", imp)
+
+    def test_metric_series_extraction(self):
+        self.assertEqual(addin._metric_series("DIN 5480 W30x2x14"), "W")
+        self.assertEqual(addin._metric_series("DIN 5480 N40x2.0x18"), "N")
+        self.assertIsNone(addin._metric_series("ANSI B92.1 16/32 DP 30T 30deg"))
+
+    def test_populate_presets_series_rebuilds(self):
+        inputs = _fresh_inputs()
+        pr = inputs.itemById(addin.ID_PRESET)
+        addin._populate_presets(inputs, "metric", "N")
+        names = [it.name for it in pr.listItems]
+        self.assertIn("DIN 5480 N40x2.0x18", names)
+        self.assertNotIn("DIN 5480 W30x2x14", names)
+
+    def test_apply_preset_syncs_series_selector(self):
+        inputs = _fresh_inputs()
+        addin._apply_preset(inputs, "DIN 5480 N40x2.0x18")
+        ps = inputs.itemById(addin.ID_PROFILE_SERIES)
+        self.assertTrue(ps.listItems._items[1].isSelected)
+        addin._apply_preset(inputs, "DIN 5480 W30x2x14")
+        self.assertTrue(ps.listItems._items[0].isSelected)
 
 
 class TestVisibility(unittest.TestCase):
@@ -235,6 +285,30 @@ class TestPresetApplyNew(unittest.TestCase):
     def test_dp_series_index(self):
         self.assertEqual(addin._dp_series_index("16/32"), 1)
         self.assertEqual(addin._dp_series_index("nope"), 0)
+
+    def test_nseries_preset_sets_tip_root_override(self):
+        inputs = _fresh_inputs()
+        addin._apply_preset(inputs, "DIN 5480 N40x2.0x18")
+        params = addin._collect_params(inputs)
+        self.assertEqual(params["spline_type"], "metric")
+        self.assertAlmostEqual(params["tip_diameter_mm"], 39.60, places=6)
+        self.assertAlmostEqual(params["root_diameter_mm"], 35.20, places=6)
+
+    def test_wseries_preset_uses_table_tip_root(self):
+        inputs = _fresh_inputs()
+        addin._apply_preset(inputs, "DIN 5480 W30x2x14")
+        params = addin._collect_params(inputs)
+        self.assertEqual(params["spline_type"], "metric")
+        self.assertAlmostEqual(params["tip_diameter_mm"], 29.8, places=6)
+        self.assertAlmostEqual(params["root_diameter_mm"], 25.6, places=6)
+
+    def test_custom_resets_override_to_formula(self):
+        inputs = _fresh_inputs()
+        addin._apply_preset(inputs, "DIN 5480 N40x2.0x18")
+        addin._apply_preset(inputs, "Custom")
+        params = addin._collect_params(inputs)
+        self.assertNotIn("tip_diameter_mm", params)
+        self.assertNotIn("root_diameter_mm", params)
 
     def test_root_type_value(self):
         self.assertEqual(addin._root_type_value("Fillet root"), "fillet")

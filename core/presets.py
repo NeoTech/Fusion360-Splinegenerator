@@ -4,8 +4,20 @@ core.presets
 
 Standards lookup tables (DIN 5480, ANSI B92.1, SAE J499 / ISO 500).
 
-Each preset is a dictionary of design parameters keyed by a human-readable
-name.  The UI layer reads these to auto-fill and lock the parameter inputs.
+The preset data lives in CSV files under ``core/data/`` (one file per standard
+family) so the tables can be edited without touching Python.  At import time
+these are parsed into the ``PRESETS`` dict that the UI layer consumes.
+
+Data files
+----------
+* ``din5480_w.csv``  : DIN 5480 W-series (full-depth) metric involute
+* ``din5480_n.csv``  : DIN 5480 N-series (reduced-depth) metric involute
+* ``ansi_b921.csv``  : ANSI B92.1 / SAE imperial involute
+* ``sae_pto.csv``    : SAE J499 / ISO 500 parallel-side tractor PTO
+
+Each CSV uses a uniform superset header; an empty cell means the field is
+omitted from that preset's parameter dict.  ``tools/gen_data_csv.py`` regenerates
+the data files from the authoritative standard tables.
 
 Units
 -----
@@ -19,121 +31,82 @@ Units
 
 from __future__ import annotations
 
-from typing import Dict, Any
+import csv
+import os
+from typing import Dict, Any, List
 
-# name -> parameter dict
-PRESETS: Dict[str, Dict[str, Any]] = {
-    "Custom": {
-        "kind": "custom",
-    },
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_DATA_DIR = os.path.join(_HERE, "data")
 
-    # ---- SAE J499 / ISO 500 parallel-side tractor PTO -------------------
-    "Tractor PTO 1-3/8\" 6T (540 RPM)": {
-        "kind": "parallel",
-        "spline_type": "parallel",
-        "gender": "external",
-        "teeth": 6,
-        "major_diameter_mm": 34.9254,   # 1-3/8 in
-        "minor_diameter_mm": 29.4132,   # 1-5/32 in
-        "tooth_width_mm": 8.73,
-        "length_mm": 60.0,
-    },
-    "Tractor PTO 1-3/8\" 21T (1000 RPM)": {
-        "kind": "parallel",
-        "spline_type": "parallel",
-        "gender": "external",
-        "teeth": 21,
-        "major_diameter_mm": 34.9254,   # 1-3/8 in
-        "minor_diameter_mm": 31.75,     # 1-1/4 in
-        "tooth_width_mm": 3.0,
-        "length_mm": 60.0,
-    },
-    "Tractor PTO 1-3/4\" 20T (1000 RPM)": {
-        "kind": "parallel",
-        "spline_type": "parallel",
-        "gender": "external",
-        "teeth": 20,
-        "major_diameter_mm": 44.45,     # 1-3/4 in
-        "minor_diameter_mm": 40.487,    # 1-19/32 in
-        "tooth_width_mm": 4.0,
-        "length_mm": 60.0,
-    },
+# CSV files are loaded in this order; "Custom" is always first in PRESETS.
+_DATA_FILES = [
+    "sae_pto.csv",
+    "din5480_w.csv",
+    "din5480_n.csv",
+    "ansi_b921.csv",
+]
 
-    # ---- DIN 5480 metric involute ----------------------------------------
-    "DIN 5480 W30x2x14": {
-        "kind": "involute",
-        "spline_type": "metric",
-        "gender": "external",
-        "module_mm": 2.0,
-        "teeth": 14,
-        "pressure_angle_deg": 30.0,
-        "profile_shift": 0.0,
-        "length_mm": 40.0,
-    },
-    "DIN 5480 W40x2x18": {
-        "kind": "involute",
-        "spline_type": "metric",
-        "gender": "external",
-        "module_mm": 2.0,
-        "teeth": 18,
-        "pressure_angle_deg": 30.0,
-        "profile_shift": 0.0,
-        "length_mm": 40.0,
-    },
-    "DIN 5480 W26x3x16": {
-        "kind": "involute",
-        "spline_type": "metric",
-        "gender": "external",
-        "module_mm": 3.0,
-        "teeth": 16,
-        "pressure_angle_deg": 30.0,
-        "profile_shift": 0.0,
-        "length_mm": 40.0,
-    },
-
-    # ---- ANSI B92.1 imperial involute ------------------------------------
-    "ANSI B92.1 16/32 DP 30T 30deg": {
-        "kind": "involute",
-        "spline_type": "imperial",
-        "gender": "external",
-        "dp": 16.0,
-        "dp_series": "16/32",
-        "root_type": "flat",
-        "teeth": 30,
-        "pressure_angle_deg": 30.0,
-        "profile_shift": 0.0,
-        "length_mm": 40.0,
-    },
-    "ANSI B92.1 16/32 DP 30T 30deg (Fillet)": {
-        "kind": "involute",
-        "spline_type": "imperial",
-        "gender": "external",
-        "dp": 16.0,
-        "dp_series": "16/32",
-        "root_type": "fillet",
-        "teeth": 30,
-        "pressure_angle_deg": 30.0,
-        "profile_shift": 0.0,
-        "length_mm": 40.0,
-    },
-    "ANSI B92.1 24/48 DP 37.5deg": {
-        "kind": "involute",
-        "spline_type": "imperial",
-        "gender": "external",
-        "dp": 24.0,
-        "dp_series": "24/48",
-        "root_type": "flat",
-        "teeth": 24,
-        "pressure_angle_deg": 37.5,
-        "profile_shift": 0.0,
-        "length_mm": 40.0,
-    },
+# Column -> Python type.  Columns not listed (and empty cells) are skipped.
+_INT_FIELDS = {"teeth"}
+_FLOAT_FIELDS = {
+    "pressure_angle_deg", "profile_shift", "length_mm", "module_mm",
+    "tip_diameter_mm", "root_diameter_mm", "dp", "major_diameter_mm",
+    "minor_diameter_mm", "tooth_width_mm",
 }
+_STR_FIELDS = {"kind", "spline_type", "gender", "dp_series", "root_type"}
+
+
+def _parse_row(row: Dict[str, str]) -> Dict[str, Any]:
+    """Convert one CSV row (a dict of strings) into a parameter dict."""
+    params: Dict[str, Any] = {}
+    for key, raw in row.items():
+        if key == "name" or raw is None or raw == "":
+            continue
+        if key in _INT_FIELDS:
+            params[key] = int(float(raw))
+        elif key in _FLOAT_FIELDS:
+            params[key] = float(raw)
+        elif key in _STR_FIELDS:
+            params[key] = raw
+        # unknown columns are ignored
+    return params
+
+
+def _load_presets() -> Dict[str, Dict[str, Any]]:
+    """Read every data file and build the ordered PRESETS mapping."""
+    presets: Dict[str, Dict[str, Any]] = {"Custom": {"kind": "custom"}}
+    for fname in _DATA_FILES:
+        path = os.path.join(_DATA_DIR, fname)
+        if not os.path.exists(path):
+            continue
+        with open(path, newline="", encoding="utf-8") as fh:
+            for row in csv.DictReader(fh):
+                name = row.get("name")
+                if not name:
+                    continue
+                presets[name] = _parse_row(row)
+    return presets
+
+
+# name -> parameter dict (built from CSV at import time)
+PRESETS: Dict[str, Dict[str, Any]] = _load_presets()
+
+
+def reload_presets() -> Dict[str, Dict[str, Any]]:
+    """Re-read the CSV data files and refresh ``PRESETS`` in place.
+
+    Returns the freshly built mapping.  The module-level ``PRESETS`` name is
+    updated so existing ``from core import presets`` references see new data
+    without a Python process restart.
+    """
+    global PRESETS
+    PRESETS = _load_presets()
+    return PRESETS
 
 
 # ANSI B92.1 stub diametral-pitch series (major/minor DP).  The UI dropdown
 # offers these; the major DP drives the pitch diameter (D = z / P_d).
-DP_SERIES = ["12/24", "16/32", "24/48", "32/64"]
+DP_SERIES = ["12/24", "16/32", "24/48", "32/64", "20/40", "40/80", "48/96"]
 
 
 def dp_series_to_major_dp(series: str) -> float:
@@ -149,7 +122,7 @@ def dp_series_to_major_dp(series: str) -> float:
 PARALLEL_TOOTH_COUNTS = [6, 8, 10]
 
 
-def preset_names() -> list:
+def preset_names() -> List[str]:
     """Ordered list of preset names for the UI dropdown."""
     return list(PRESETS.keys())
 

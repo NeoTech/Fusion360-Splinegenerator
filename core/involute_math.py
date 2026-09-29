@@ -87,6 +87,8 @@ def compute_radii(
     root_type: str = "flat",
     center_distance_offset_mm: float = 0.0,
     slop_mm: float = 0.0,
+    major_diameter_mm: float = None,
+    root_diameter_mm: float = None,
 ) -> Dict[str, float]:
     """Return the characteristic radii (mm) of one involute spline.
 
@@ -120,6 +122,16 @@ def compute_radii(
         mating pair is not an exact (too-tight) line-to-line fit.  Applied as a
         radial shift of the pitch radius, so the involute tooth shape is
         preserved and only its radial placement moves.
+    major_diameter_mm / root_diameter_mm:
+        Optional explicit tip (``da``) and root (``df``) diameters in
+        millimetres.  When supplied they OVERRIDE the addendum/dedendum
+        formulae and set the major / root radii directly (the involute flank
+        is still generated from the base circle, only its radial truncation
+        changes).  This is how the reduced-depth DIN 5480 N-series presets
+        reproduce their published ``da`` / ``df`` exactly.  A fit allowance
+        ``slop_mm`` is still applied on top (half to each land, matching the
+        formula path).  ``None`` leaves the standard full-depth formulae in
+        force.
     """
     if teeth < 2:
         raise ValueError("A spline needs at least 2 teeth.")
@@ -155,6 +167,15 @@ def compute_radii(
         # Internal: the "space" we cut is the mirror of an external tooth.
         r_major = r_pitch + dedendum          # bottom land of the hub (large)
         r_root = r_pitch - addendum           # crest of the hub tooth (small)
+
+    # Explicit tip / root diameter override (reduced-depth N-series).  The
+    # involute flank keeps its base-circle shape; only the radii where it is
+    # truncated change.  Apply half the fit allowance to each land so slop
+    # still opens a clearance, matching the formula path's radial placement.
+    if major_diameter_mm is not None:
+        r_major = major_diameter_mm / 2.0 + slop_shift / 2.0
+    if root_diameter_mm is not None:
+        r_root = root_diameter_mm / 2.0 + slop_shift / 2.0
 
     return {
         "module": module_mm,
@@ -341,6 +362,8 @@ def external_tooth_edges(
     root_type: str = "flat",
     center_distance_offset_mm: float = 0.0,
     slop_mm: float = 0.0,
+    major_diameter_mm: float = None,
+    root_diameter_mm: float = None,
 ) -> List[tuple]:
     """Closed edge loop for ONE external tooth, centred on +X.
 
@@ -348,11 +371,15 @@ def external_tooth_edges(
     major circles; the tip land is one arc and the root land a straight line.
     This produces clean tangent-continuous faces instead of the faceted
     surfaces a many-segment polyline yields.
+
+    ``major_diameter_mm`` / ``root_diameter_mm`` optionally override the
+    formula-derived tip / root radii (reduced-depth DIN 5480 N-series).
     """
     g = compute_radii(
         module_mm, teeth, pressure_angle_deg, profile_shift, False,
         root_type=root_type, center_distance_offset_mm=center_distance_offset_mm,
-        slop_mm=slop_mm,
+        slop_mm=slop_mm, major_diameter_mm=major_diameter_mm,
+        root_diameter_mm=root_diameter_mm,
     )
     r_b, r_a, r_f, r_p = (
         g["base_radius"], g["major_radius"], g["root_radius"], g["pitch_radius"],
@@ -384,17 +411,23 @@ def internal_space_edges(
     root_type: str = "flat",
     center_distance_offset_mm: float = 0.0,
     slop_mm: float = 0.0,
+    major_diameter_mm: float = None,
+    root_diameter_mm: float = None,
 ) -> List[tuple]:
     """Closed edge loop for ONE internal spline space (the cut region).
 
     Flanks are 3-point arcs from the hub crest (small radius) out to the hub
     root (large radius); the groove bottom is a straight line and the crest
     land a single arc.
+
+    ``major_diameter_mm`` / ``root_diameter_mm`` optionally override the
+    formula-derived groove-bottom / crest radii (reduced-depth N-series).
     """
     g = compute_radii(
         module_mm, teeth, pressure_angle_deg, profile_shift, True,
         root_type=root_type, center_distance_offset_mm=center_distance_offset_mm,
-        slop_mm=slop_mm,
+        slop_mm=slop_mm, major_diameter_mm=major_diameter_mm,
+        root_diameter_mm=root_diameter_mm,
     )
     r_b, r_major, r_root, r_p = (
         g["base_radius"], g["major_radius"], g["root_radius"], g["pitch_radius"],

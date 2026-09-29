@@ -29,8 +29,10 @@ profile is sketched, extruded, and circular-patterned across the tooth count.
 - **Target-face placement** — pick a planar end face or a cylindrical bore/shaft
   face and the spline is sketched on that surface and patterned about its axis
   (cylinder axis when available, otherwise the face normal).
-- **Presets** — common sizes (PTO 6T/21T/20T, DIN 5480 W30/W40/W26, ANSI DP
-  series) auto-fill the parameters; manual fields always override.
+- **Presets** — the full DIN 5480 W-series (W6-W30) and N-series tables, ANSI
+  B92.1 DP series, and SAE J499 PTO sizes auto-fill the parameters; manual
+  fields always override. The tables live in editable CSV files under
+  `core/data/`.
 - **Performance-safe geometry** — a single tooth is patterned with a native
   `CircularPattern` feature (never sketch-level patterning), and each involute
   flank is drawn as one 3-point arc for tangent-continuous, non-faceted faces.
@@ -103,7 +105,12 @@ Fusion360-Splinegenerator/
 ├── core/                                # pure math (no Fusion dependency), all in mm
 │   ├── involute_math.py                 #   DIN 5480 / ANSI B92.1 involute flanks
 │   ├── parallel_math.py                 #   SAE J499 straight-sided PTO teeth
-│   └── presets.py                       #   standards lookup tables
+│   ├── presets.py                       #   loads the CSV tables into PRESETS
+│   └── data/                            #   standards lookup tables (CSV)
+│       ├── din5480_w.csv                #     DIN 5480 W-series (full depth)
+│       ├── din5480_n.csv                #     DIN 5480 N-series (reduced depth)
+│       ├── ansi_b921.csv                #     ANSI B92.1 / SAE imperial
+│       └── sae_pto.csv                  #     SAE J499 parallel-side PTO
 ├── cad/                                 # Fusion API layer
 │   ├── sketch_builder.py                #   sketches, reference circles, tooth loops
 │   ├── feature_builder.py               #   extrude / circular pattern / chamfer / target resolution

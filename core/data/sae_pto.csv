@@ -1,0 +1,4 @@
+name,kind,spline_type,gender,teeth,pressure_angle_deg,profile_shift,length_mm,module_mm,tip_diameter_mm,root_diameter_mm,dp,dp_series,root_type,major_diameter_mm,minor_diameter_mm,tooth_width_mm
+"Tractor PTO 1-3/8"" 6T (540 RPM)",parallel,parallel,external,6,,,60,,,,,,,34.9254,29.4132,8.73
+"Tractor PTO 1-3/8"" 21T (1000 RPM)",parallel,parallel,external,21,,,60,,,,,,,34.9254,31.75,3
+"Tractor PTO 1-3/4"" 20T (1000 RPM)",parallel,parallel,external,20,,,60,,,,,,,44.45,40.487,4

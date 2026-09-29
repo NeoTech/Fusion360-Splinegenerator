@@ -34,6 +34,22 @@ class TestRadii(unittest.TestCase):
         self.assertLess(int_["root_radius"], int_["major_radius"])
         self.assertGreater(int_["major_radius"], ext["pitch_radius"])
 
+    def test_explicit_diameter_override(self):
+        # Reduced-depth N-series: explicit da/df override the formula radii.
+        g = im.compute_radii(2.0, 18, 30.0, internal=False,
+                             major_diameter_mm=39.60, root_diameter_mm=35.20)
+        self.assertAlmostEqual(g["major_diameter"], 39.60, places=6)
+        self.assertAlmostEqual(g["root_diameter"], 35.20, places=6)
+        # Pitch / base circles are unaffected by the override.
+        self.assertAlmostEqual(g["pitch_diameter"], 36.0, places=6)
+
+    def test_override_none_keeps_formula(self):
+        a = im.compute_radii(2.0, 18, 30.0)
+        b = im.compute_radii(2.0, 18, 30.0, major_diameter_mm=None,
+                             root_diameter_mm=None)
+        self.assertAlmostEqual(a["major_diameter"], b["major_diameter"], places=9)
+        self.assertAlmostEqual(a["root_diameter"], b["root_diameter"], places=9)
+
     def test_profile_shift_grows_teeth(self):
         base = im.compute_radii(2.0, 20, 30.0, profile_shift=0.0)
         shifted = im.compute_radii(2.0, 20, 30.0, profile_shift=0.5)

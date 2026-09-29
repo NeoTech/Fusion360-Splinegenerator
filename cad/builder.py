@@ -44,19 +44,25 @@ def _resolve_profile_points(params: Dict[str, Any]):
         x = float(params.get("profile_shift", 0.0))
         root_type = params.get("root_type", "flat")
         cdo = float(params.get("center_distance_offset_mm", 0.0))
+        # Optional explicit tip / root diameters (reduced-depth N-series).
+        major_ov = params.get("tip_diameter_mm")
+        root_ov = params.get("root_diameter_mm")
         if internal:
             edges = involute_math.internal_space_edges(
                 module_mm, teeth, pa, x, root_type=root_type,
                 center_distance_offset_mm=cdo, slop_mm=slop_mm,
+                major_diameter_mm=major_ov, root_diameter_mm=root_ov,
             )
         else:
             edges = involute_math.external_tooth_edges(
                 module_mm, teeth, pa, x, root_type=root_type,
                 center_distance_offset_mm=cdo, slop_mm=slop_mm,
+                major_diameter_mm=major_ov, root_diameter_mm=root_ov,
             )
         g = involute_math.compute_radii(
             module_mm, teeth, pa, x, internal,
             root_type=root_type, center_distance_offset_mm=cdo, slop_mm=slop_mm,
+            major_diameter_mm=major_ov, root_diameter_mm=root_ov,
         )
         radii = [g["root_radius"], g["base_radius"], g["pitch_radius"], g["major_radius"]]
         key = {"root": g["root_radius"], "major": g["major_radius"], "wall": module_mm}

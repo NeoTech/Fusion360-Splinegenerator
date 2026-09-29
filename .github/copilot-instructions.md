@@ -74,7 +74,7 @@ The plugin UI must be created using `adsk.core.CommandInputs` with the following
 | :--- | :--- | :--- | :--- |
 | `spline_type` | Dropdown | Involute (Metric DIN 5480), Involute (Imperial ANSI B92.1), Parallel-Side (PTO / SAE J499) | Selects math engine and parameter set |
 | `gender` | Dropdown | External Shaft, Internal Hub | Toggles additive boss vs. subtractive cut |
-| `preset` | Dropdown | Custom, Tractor PTO 1-3/8" 6T, Tractor PTO 1-3/8" 21T, DIN 5480 W30x2x14, DIN 5480 W40x2x18 | Auto-fills parameters from internal JSON tables |
+| `preset` | Dropdown | Custom, Tractor PTO 1-3/8" 6T, Tractor PTO 1-3/8" 21T, DIN 5480 W30x2x14, DIN 5480 N40x2.0x18 | Auto-fills parameters from CSV tables in `core/data/` |
 | `teeth` | IntegerSpinner | Range: 4 to 120 | Number of teeth ($z$) |
 | `module_or_dp` | ValueInput | mm or 1/in | Module ($m$) or Stub DP ($P_d$) depending on standard |
 | `pressure_angle` | Dropdown | $30^\circ$, $37.5^\circ$, $45^\circ$ | Involute pressure angle ($\alpha$) |

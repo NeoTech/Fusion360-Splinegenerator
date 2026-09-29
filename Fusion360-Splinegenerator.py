@@ -19,6 +19,7 @@ internal centimetre base unit happens inside ``cad.sketch_builder`` /
 from __future__ import annotations
 
 import os
+import re
 import sys
 import importlib
 import traceback
@@ -77,6 +78,7 @@ _reference_cmd = "Extrude"
 ID_SPLINE_TYPE = "spline_type"
 ID_GENDER = "gender"
 ID_PRESET = "preset"
+ID_PROFILE_SERIES = "profile_series"
 ID_TEETH = "teeth"
 ID_MODULE_OR_DP = "module_or_dp"
 ID_DP_SERIES = "dp_series"
@@ -87,6 +89,8 @@ ID_PROFILE_SHIFT = "profile_shift"
 ID_MAJOR = "major_diameter"
 ID_MINOR = "minor_diameter"
 ID_TOOTH_WIDTH = "tooth_width"
+ID_TIP_DIA = "tip_diameter"
+ID_ROOT_DIA = "root_diameter"
 ID_LENGTH = "length"
 ID_CHAMFER = "chamfer"
 ID_SLOP = "slop"
@@ -107,10 +111,30 @@ _PRESSURE_ANGLES = ["30", "37.5", "45"]
 _DP_SERIES = list(presets.DP_SERIES)
 # ANSI side-fit root forms shown in the UI, mapped to the math engine keys.
 _ROOT_TYPES = ["Flat root", "Fillet root"]
+# DIN 5480 metric profile series. W = full depth (formula-driven), N = reduced
+# depth (table-driven, carries explicit da/df). Selecting one filters the
+# Preset list to that series.
+_PROFILE_SERIES = ["W (full depth)", "N (reduced depth)"]
 
 
 def _root_type_value(value: str) -> str:
     return "fillet" if value.startswith("Fillet") else "flat"
+
+
+def _series_value(value: str) -> str:
+    """Map a Profile Series dropdown label to its W/N key."""
+    return "N" if value.startswith("N") else "W"
+
+
+def _metric_series(name: str):
+    """Extract the W/N profile series from a DIN 5480 preset designator.
+
+    Matches the series letter that immediately precedes the reference-diameter
+    number in the designator (e.g. "DIN 5480 W30x2x14" -> "W",
+    "DIN 5480 N40x2x18" -> "N"). Returns None for non-metric names.
+    """
+    m = re.search(r"\b([WN])\d", name)
+    return m.group(1) if m else None
 
 
 def _spline_type_index(value: str) -> int:
@@ -126,32 +150,43 @@ def _kind_for_spline_type(value: str) -> str:
     return ("metric", "imperial", "parallel")[idx]
 
 
-def _presets_for_kind(kind: str) -> list:
+def _presets_for_kind(kind: str, series: str = None) -> list:
     """Preset names relevant to the active standard.
 
     Always includes the "Custom" entry (kind == "custom"); the remaining
     presets are filtered by their ``spline_type`` so the dropdown never shows,
     e.g., a DIN 5480 metric preset while the Imperial ANSI standard is picked.
+
+    For the metric standard, an optional ``series`` ("W"/"N") further filters
+    to that DIN 5480 profile series (full vs reduced depth). It is ignored for
+    the other standards.
     """
     names = []
     for name, p in presets.PRESETS.items():
-        if p.get("kind") == "custom" or p.get("spline_type") == kind:
+        if p.get("kind") == "custom":
             names.append(name)
+            continue
+        if p.get("spline_type") != kind:
+            continue
+        if kind == "metric" and series and _metric_series(name) != series:
+            continue
+        names.append(name)
     return names
 
 
-def _populate_presets(inputs: core.CommandInputs, kind: str):
-    """Rebuild the Preset dropdown so it only lists the active standard.
+def _populate_presets(inputs: core.CommandInputs, kind: str, series: str = None):
+    """Rebuild the Preset dropdown so it only lists the active standard
+    (and, for metric, the active W/N profile series).
 
     Selection resets to the first entry (Custom) because a preset from the
-    previous standard is no longer valid once the standard changes.
+    previous standard/series is no longer valid once either changes.
     """
     pr = inputs.itemById(ID_PRESET)
     if pr is None:
         return
     try:
         pr.listItems.clear()
-        for i, name in enumerate(_presets_for_kind(kind)):
+        for i, name in enumerate(_presets_for_kind(kind, series)):
             pr.listItems.add(name, i == 0)
     except Exception:
         pass
@@ -189,12 +224,22 @@ class _CommandCreatedHandler(core.CommandCreatedEventHandler):
             for i, name in enumerate(_BUILD_MODES):
                 bm.listItems.add(name, i == 0)
 
+            # DIN 5480 profile series (metric involute only). Selecting W or N
+            # filters the Preset list to that depth family. Created before the
+            # Preset dropdown so the UX reads standard -> series -> preset.
+            pseries = inputs.addDropDownCommandInput(
+                ID_PROFILE_SERIES, "Profile Series (DIN 5480)",
+                core.DropDownStyles.TextListDropDownStyle,
+            )
+            for i, name in enumerate(_PROFILE_SERIES):
+                pseries.listItems.add(name, i == 0)
+
             pr = inputs.addDropDownCommandInput(
                 ID_PRESET, "Preset", core.DropDownStyles.TextListDropDownStyle
             )
-            # Populate per the default standard (metric); rebuilt whenever the
-            # spline standard dropdown changes.
-            for i, name in enumerate(_presets_for_kind("metric")):
+            # Populate per the default standard (metric, W full-depth series);
+            # rebuilt whenever the spline standard or profile series changes.
+            for i, name in enumerate(_presets_for_kind("metric", "W")):
                 pr.listItems.add(name, i == 0)
 
             pa = inputs.addDropDownCommandInput(
@@ -245,6 +290,12 @@ class _CommandCreatedHandler(core.CommandCreatedEventHandler):
             _add_linear(inputs, ID_MAJOR, "Major Diameter", 34.9254)
             _add_linear(inputs, ID_MINOR, "Minor Diameter", 29.4132)
             _add_linear(inputs, ID_TOOTH_WIDTH, "Tooth Width", 8.73)
+            # Explicit tip (da) / root (df) diameters for reduced-depth metric
+            # (DIN 5480 N-series) profiles. 0 = derive from the standard
+            # addendum/dedendum formula. A preset fills these; manual edits
+            # still override.
+            _add_linear(inputs, ID_TIP_DIA, "Tip Diameter da (0=formula)", 0.0)
+            _add_linear(inputs, ID_ROOT_DIA, "Root Diameter df (0=formula)", 0.0)
             _add_linear(inputs, ID_LENGTH, "Length", 40.0)
             _add_linear(inputs, ID_CHAMFER, "Lead-in Chamfer", 1.0)
 
@@ -304,6 +355,8 @@ def _apply_visibility(inputs: core.CommandInputs, kind: str):
     offset at the same time.
     """
     involute = kind in ("metric", "imperial")
+    # DIN 5480 W/N profile-series selector is metric-only.
+    _show(inputs, ID_PROFILE_SERIES, kind == "metric")
     # Module value box is metric-only; imperial DP comes from the series dropdown.
     _show(inputs, ID_MODULE_OR_DP, kind == "metric")
     _show(inputs, ID_DP_SERIES, kind == "imperial")
@@ -314,6 +367,10 @@ def _apply_visibility(inputs: core.CommandInputs, kind: str):
     _show(inputs, ID_ROOT_TYPE, involute)
     # Centre-distance offset is a metric (DIN 5480) adjustment.
     _show(inputs, ID_CENTER_OFFSET, kind == "metric")
+    # Explicit tip / root diameter override is a metric (DIN 5480 N-series)
+    # reduced-depth adjustment.
+    _show(inputs, ID_TIP_DIA, kind == "metric")
+    _show(inputs, ID_ROOT_DIA, kind == "metric")
     # Parallel-side (PTO) rectangular-tooth parameters.
     _show(inputs, ID_MAJOR, kind == "parallel")
     _show(inputs, ID_MINOR, kind == "parallel")
@@ -354,11 +411,20 @@ def _apply_preset(inputs: core.CommandInputs, preset_name: str):
                 inp.isEnabled = True
             except Exception:
                 pass
+        # Custom has no fixed depth: fall back to the standard formula.
+        _set_linear_mm(inputs, ID_TIP_DIA, 0.0)
+        _set_linear_mm(inputs, ID_ROOT_DIA, 0.0)
         _apply_visibility(inputs, kind)
         return
 
     if "spline_type" in p:
         _select_dropdown(inputs, ID_SPLINE_TYPE, _spline_type_for(p["spline_type"]))
+    # Keep the metric profile-series selector in sync with the chosen preset
+    # (programmatic selection does not re-fire inputChanged, so no recursion).
+    if p.get("spline_type") == "metric":
+        ser = _metric_series(preset_name)
+        if ser:
+            _select_dropdown(inputs, ID_PROFILE_SERIES, 0 if ser == "W" else 1)
     if "gender" in p:
         _select_dropdown(inputs, ID_GENDER, 1 if p["gender"] == "internal" else 0)
     if "teeth" in p:
@@ -382,6 +448,11 @@ def _apply_preset(inputs: core.CommandInputs, preset_name: str):
         _set_linear_mm(inputs, ID_TOOTH_WIDTH, p["tooth_width_mm"])
     if "length_mm" in p:
         _set_linear_mm(inputs, ID_LENGTH, p["length_mm"])
+    # Explicit tip / root diameters (reduced-depth N-series). A preset without
+    # them resets to 0 so a stale override from a previously-picked preset does
+    # not leak into a full-depth profile.
+    _set_linear_mm(inputs, ID_TIP_DIA, p.get("tip_diameter_mm", 0.0))
+    _set_linear_mm(inputs, ID_ROOT_DIA, p.get("root_diameter_mm", 0.0))
 
     _apply_visibility(inputs, p.get("spline_type", "metric"))
 
@@ -430,12 +501,20 @@ class _CommandInputChangedHandler(core.InputChangedEventHandler):
                 _apply_preset(inputs, name)
             elif changed.id == ID_SPLINE_TYPE:
                 kind = _kind_for_spline_type(_dropdown_value(changed))
-                # Filter the preset list to the newly-selected standard, then
-                # refresh field visibility. (Programmatic selection in
-                # _apply_preset does not re-fire this event, so there is no
-                # recursion between preset and standard changes.)
-                _populate_presets(inputs, kind)
+                # Reset the metric W/N selector to its default (W) whenever the
+                # standard changes, then filter the preset list and refresh
+                # field visibility. (Programmatic selection in _apply_preset
+                # does not re-fire this event, so there is no recursion.)
+                series = None
+                if kind == "metric":
+                    _select_dropdown(inputs, ID_PROFILE_SERIES, 0)
+                    series = "W"
+                _populate_presets(inputs, kind, series)
                 _apply_visibility(inputs, kind)
+            elif changed.id == ID_PROFILE_SERIES:
+                # Metric-only: re-filter the preset list to the chosen series.
+                series = _series_value(_dropdown_value(changed))
+                _populate_presets(inputs, "metric", series)
         except Exception:
             if _ui:
                 _ui.messageBox("Input error:\n" + traceback.format_exc())
@@ -533,6 +612,15 @@ def _collect_params(inputs: core.CommandInputs) -> dict:
         )
         if kind == "metric":
             params["center_distance_offset_mm"] = _linear_mm(inputs, ID_CENTER_OFFSET)
+            # Explicit tip / root diameters (reduced-depth N-series). 0 means
+            # "use the standard addendum/dedendum formula" -> pass None so the
+            # engine applies its default.
+            tip = _linear_mm(inputs, ID_TIP_DIA)
+            root = _linear_mm(inputs, ID_ROOT_DIA)
+            if tip > 1e-9:
+                params["tip_diameter_mm"] = tip
+            if root > 1e-9:
+                params["root_diameter_mm"] = root
     else:  # parallel
         params["major_diameter_mm"] = _linear_mm(inputs, ID_MAJOR)
         params["minor_diameter_mm"] = _linear_mm(inputs, ID_MINOR)
